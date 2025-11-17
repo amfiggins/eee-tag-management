@@ -1,114 +1,152 @@
-# 3E Tag Management Automation
+# 3E Tag Management
 
-Automation tools for managing Google Tag Manager (GTM) tags across multiple containers.
+Centralized repository for managing Google Tag Manager (GTM) tags and automation tools for 3E Enrollment's client deployments.
 
 ## Overview
 
-This repository contains tools and scripts for automating GTM tag updates across multiple containers, eliminating the need for manual updates in each container.
-
-## Features
-
-- **Automated Tag Updates**: Update tags across all GTM containers with a single command
-- **Dry Run Mode**: Test updates before applying them
-- **Selective Updates**: Update specific containers or all containers
-- **Version Management**: Automatically creates and publishes container versions
+This repository contains:
+- **Standard GTM Tags**: Production-ready tags for client deployment
+- **Automation Tools**: API-based tools for updating tags across multiple containers
 
 ## Repository Structure
 
 ```
 eee-tag-management/
-├── gtm_tag_updater.py          # Main automation script
-├── requirements-gtm.txt        # Python dependencies
-├── GTM_TAG_UPDATER_SETUP.md   # Detailed setup guide
-├── GTM_TAG_UPDATER_QUICKSTART.md  # Quick start guide
-├── README.md                   # This file
-└── .gitignore                  # Git ignore rules
+├── tags/                    # Standard GTM tags for client deployment
+│   ├── analytics/          # Analytics and tracking tags
+│   ├── forms/              # Form validation and submission tags
+│   ├── tracking/           # Event tracking and conversion tags
+│   ├── ui/                 # UI enhancement tags (popups, buttons, etc.)
+│   ├── integrations/       # Third-party integration tags
+│   └── templates/          # GTM variable templates
+│
+├── automation/              # API tools for tag management
+│   ├── gtm_tag_updater.py  # Main automation script
+│   └── requirements-gtm.txt # Python dependencies
+│
+└── docs/                   # Documentation
+    ├── GTM_TAG_UPDATER_SETUP.md
+    ├── GTM_TAG_UPDATER_QUICKSTART.md
+    └── GIT_SETUP.md
 ```
 
-## Quick Start
+## Quick Links
 
-1. **Install dependencies:**
+- **[Tag Documentation](tags/README.md)** - Complete list of all tags with descriptions
+- **[Automation Tools](automation/README.md)** - Tools for updating tags across containers
+- **[Git Setup Guide](docs/GIT_SETUP.md)** - Repository setup and workflow
+
+## Getting Started
+
+### For Tag Deployment
+
+1. Browse tags in the [`tags/`](tags/) directory
+2. Review tag documentation in [`tags/README.md`](tags/README.md)
+3. Copy tag code and deploy to GTM
+4. Configure triggers and test
+
+### For Tag Updates
+
+1. Install automation dependencies:
    ```bash
+   cd automation
    pip install -r requirements-gtm.txt
    ```
 
-2. **Set up Google Cloud credentials** (see `GTM_TAG_UPDATER_SETUP.md`)
+2. Set up Google Cloud credentials (see [Setup Guide](docs/GTM_TAG_UPDATER_SETUP.md))
 
-3. **Run a dry run:**
+3. Update tags:
    ```bash
    python gtm_tag_updater.py \
      --tag-name "3E_Pop-up" \
-     --script-file "path/to/script" \
+     --script-file "../tags/ui/3E_Pop-up" \
      --account-id "YOUR_ACCOUNT_ID" \
      --credentials "credentials.json" \
      --dry-run
    ```
 
-For detailed instructions, see [GTM_TAG_UPDATER_QUICKSTART.md](GTM_TAG_UPDATER_QUICKSTART.md).
+## Tag Categories
 
-## Documentation
+### 📊 Analytics
+Tags for tracking user behavior, engagement, and performance metrics.
+- 3E_Analytics Tracking
+- 3E_Page Activity
 
-- **[Quick Start Guide](GTM_TAG_UPDATER_QUICKSTART.md)** - Get up and running quickly
-- **[Setup Guide](GTM_TAG_UPDATER_SETUP.md)** - Detailed setup instructions
+### 📝 Forms
+Tags for form validation, submission handling, and form-related interactions.
+- 3E_Form Validation
+- 3E_RFI Submit
 
-## Requirements
+### 📡 Tracking
+Tags for tracking events, conversions, and integrating with third-party tracking systems.
+- 3E_3EI Recruiter Activity
+- 3E_3EI Recruiter Conversion
+- 3E_3EI Recruiter Tracking
+- 3E_3EI Recruiter Unified
+- 3E_Insights Pixel
+- 3E_Pop-up Tracking
 
-- Python 3.7+
-- Google Cloud Project with GTM API enabled
-- GTM Account with appropriate permissions
-- Service Account or OAuth credentials
+### 🎨 UI
+Tags for user interface enhancements, popups, and visual elements.
+- 3E_Favicon Injection
+- 3E_Pop-up
+- 3E_Pop-up Marketo Form
+- 3E_Sticky Buttons
 
-## Git Repository Setup
+### 🔌 Integrations
+Tags for integrating with external services and platforms.
+- 3E_Cloudflare Beacon
 
-This repository is configured with dual remotes:
+### 📋 Templates
+GTM variable templates for configuration management.
+- Template - 3E Config
 
-- **origin**: 3E GitHub organization repository
-- **backup**: Personal GitHub repository (backup)
+## Common Dependencies
 
-### Initial Setup
+### 3E Config
+Most tags depend on the **3E Config** variable template. This must be set up in GTM before deploying dependent tags. See [`tags/templates/Template - 3E Config`](tags/templates/Template%20-%203E%20Config) for setup.
 
-```bash
-# Initialize git (if not already done)
-git init
+### Marketo Munchkin
+Required for tags that send tracking data to Marketo. Ensure Munchkin is loaded or use `3E_Insights Pixel` to load it dynamically.
 
-# Add 3E GitHub as origin
-git remote add origin <3E_GITHUB_REPO_URL>
+### Marketo Forms2
+Required for tags that interact with Marketo forms. The Forms2 library is typically loaded by Marketo forms themselves.
 
-# Add personal GitHub as backup
-git remote add backup <PERSONAL_GITHUB_REPO_URL>
+## Version Management
 
-# Verify remotes
-git remote -v
-```
-
-### Pushing to Both Remotes
-
-```bash
-# Push to 3E GitHub (origin)
-git push origin main
-
-# Push to personal GitHub (backup)
-git push backup main
-```
-
-Or push to both at once:
-```bash
-git push origin main && git push backup main
-```
+- Tag versions are tracked in file headers
+- Use automation tools to push updates across containers
+- Always test with `--dry-run` before deploying
 
 ## Contributing
 
-1. Make changes in a feature branch
-2. Test thoroughly with `--dry-run` flag
-3. Commit and push to both remotes
-4. Create pull request in 3E GitHub
+1. Make changes to tag files
+2. Update version numbers and dates
+3. Test thoroughly
+4. Commit and push to both remotes (3E GitHub and personal backup)
+5. Use automation tools to deploy updates
 
-## Security Notes
+## Security
 
-- **Never commit credentials files** - They are in `.gitignore`
+- **Never commit credentials** - They are in `.gitignore`
 - Store credentials securely outside the repository
-- Use service accounts for automation when possible
+- Use service accounts for automation
 - Rotate credentials regularly
+
+## Repository Management
+
+This repository is configured with dual remotes:
+- **origin**: 3E GitHub organization (`3enrollment/eee-tag-management`)
+- **backup**: Personal GitHub (`amfiggins/eee-tag-management`)
+
+See [Git Setup Guide](docs/GIT_SETUP.md) for details on managing both remotes.
+
+## Support
+
+For questions or issues:
+- Review tag documentation in [`tags/README.md`](tags/README.md)
+- Check automation documentation in [`automation/README.md`](automation/README.md)
+- See setup guides in [`docs/`](docs/)
 
 ## License
 
@@ -117,4 +155,3 @@ Internal use only - 3E Enrollment
 ## Maintainer
 
 Anthony Figgins
-

@@ -1,0 +1,115 @@
+<script>
+// Script Name: 3E_Pop-up Marketo Form
+// Author: Anthony Figgins
+// Description: Dynamically loads a Marketo lead form into #mktoForm inside a Digioh popup.
+// Version: 1.2.3
+// Date Updated: 2025-09-26
+// Dependencies: 3E Config, Marketo Forms2
+
+
+(function () {
+  'use strict';
+  // Pull settings from 3E config
+  var CFG;
+  try { 
+    CFG = {{3E config}}; 
+  } catch(e) { 
+    CFG = {}; 
+  }
+  var BASE       = CFG.baseUrl;
+  var ACCT       = CFG.munchkinId;
+  var FORMID     = CFG.leadFormId;    // <-- lead form
+  var DEBUG = CFG && CFG.debugMode === 'true';
+
+  // Log script name and version on load (only in debug mode)
+  if (DEBUG) {
+    console.log('[3E_Pop-up Marketo Form] v1.2.3');
+  }
+
+  function sendLogToParent(message, type) {
+    type = type || 'log';
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "MarketoFormLoader:" + type, message: message }, '*');
+    }
+  }
+
+  function loadMarketoForm() {
+    var attempts = 0;
+    var maxAttempts = 10;
+    var retryInterval = 500;
+
+    function tryLoadForm() {
+      if (DEBUG) console.log("Checking if MktoForms2 is defined...");
+      sendLogToParent("Checking if MktoForms2 is defined...");
+
+      if (typeof MktoForms2 === 'undefined') {
+        if (attempts < maxAttempts) {
+          attempts++;
+          if (DEBUG) console.warn("MktoForms2 not defined. Retrying... (" + attempts + "/" + maxAttempts + ")");
+          sendLogToParent("MktoForms2 not defined. Retrying... (" + attempts + "/" + maxAttempts + ")", 'warn');
+          setTimeout(tryLoadForm, retryInterval);
+          return;
+        } else {
+          console.error('MktoForms2 is not defined after maximum attempts.');
+          sendLogToParent('MktoForms2 is not defined after maximum attempts.', 'error');
+          return;
+        }
+      }
+
+      if (DEBUG) console.log("Searching for the Marketo form container (#mktoForm)...");
+      sendLogToParent("Searching for the Marketo form container (#mktoForm)...");
+
+      var formContainer = document.querySelector('#mktoForm');
+      if (formContainer) {
+        if (DEBUG) console.log('Form container found. Loading Marketo form.');
+        sendLogToParent('Form container found. Loading Marketo form.');
+
+        MktoForms2.loadForm(BASE, ACCT, FORMID, function (form) {
+          if (DEBUG) console.log('Marketo form loaded successfully.');
+          sendLogToParent('Marketo form loaded successfully.');
+        });
+      } else {
+        if (attempts < maxAttempts) {
+          attempts++;
+          if (DEBUG) console.warn("Form container not found. Retrying... (" + attempts + "/" + maxAttempts + ")");
+          sendLogToParent("Form container not found. Retrying... (" + attempts + "/" + maxAttempts + ")", 'warn');
+          setTimeout(tryLoadForm, retryInterval);
+        } else {
+          console.error('Form container not found after maximum attempts.');
+          sendLogToParent('Form container not found after maximum attempts.', 'error');
+        }
+      }
+    }
+
+    tryLoadForm();
+  }
+
+  function loadMarketoScript() {
+    if (typeof MktoForms2 !== 'undefined') {
+      if (DEBUG) console.log('Marketo script already loaded.');
+      sendLogToParent('Marketo script already loaded.');
+      loadMarketoForm();
+      return;
+    }
+
+    if (DEBUG) console.log('Loading Marketo script dynamically...');
+    sendLogToParent('Loading Marketo script dynamically...');
+
+    var script = document.createElement('script');
+    script.src = BASE + "/js/forms2/js/forms2.min.js";
+    script.async = true;
+    script.onload = function () {
+      if (DEBUG) console.log('Marketo script loaded successfully.');
+      sendLogToParent('Marketo script loaded successfully.');
+      loadMarketoForm();
+    };
+    script.onerror = function () {
+      console.error('Failed to load Marketo script.');
+      sendLogToParent('Failed to load Marketo script.', 'error');
+    };
+    document.head.appendChild(script);
+  }
+
+  document.addEventListener('DOMContentLoaded', loadMarketoScript);
+})();
+</script>

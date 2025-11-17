@@ -1,0 +1,82 @@
+<script>
+// Script Name: 3E_3EI Recruiter Conversion
+// Author: Anthony Figgins
+// Description: Submits a hidden Marketo blind form on 3EI Recruiter email capture using 3E config; lazy-loads Forms2 and ensures tracking cookie.
+// Version: 2.2.4
+// Date Updated: 2025-09-26
+// Dependencies: 3E Config, Marketo Forms2
+
+(function () {
+  'use strict';
+  // === Pull config once ===
+  var CFG;
+  try { 
+    CFG = {{3E config}}; 
+  } catch(e) { 
+    CFG = {}; 
+  }
+
+  // --- Marketo values ---
+  var MKTO_BASE    = CFG.baseUrl;
+  var MKTO_ID      = CFG.munchkinId;
+  var MKTO_DEBUG = CFG && CFG.debugMode === 'true';
+  var MKTO_FORM_ID = CFG.blindFormId;
+
+  // --- Chatbot values (not used here, but available) ---
+  var CHATBOT_PROD = CFG.chatBotProdId;
+  var CHATBOT_DEV  = CFG.chatBotDevId;
+
+  // Log script name and version on load (only in debug mode)
+  if (MKTO_DEBUG) {
+    console.log('[3E_ChatBot Conversion] v2.2.4');
+  }
+
+  // === DataLayer event ===
+  var ev = (window.dataLayer && window.dataLayer.length)
+    ? window.dataLayer[window.dataLayer.length - 1]
+    : {};
+
+  if (!ev || ev.event !== 'bot_email_captured' || !ev.details || !ev.details.email) return;
+
+  var email = String(ev.details.email || '').trim();
+  if (!email) return;
+
+  // === Ensure hidden form container ===
+  var ctr = document.getElementById('mkto-hidden-form');
+  if (!ctr) {
+    ctr = document.createElement('div');
+    ctr.id = 'mkto-hidden-form';
+    ctr.style.display = 'none';
+    document.body.appendChild(ctr);
+  }
+
+  // === Loader for Forms2 ===
+  function loadForms2(cb) {
+    if (window.MktoForms2) { cb(); return; }
+    var s = document.createElement('script');
+    s.async = true;
+    s.src = MKTO_BASE + '/js/forms2/js/forms2.min.js';
+    s.onload = cb;
+    document.head.appendChild(s);
+  }
+
+  // === Ensure tracking cookie (optional) ===
+  try {
+    if (window.Munchkin && Munchkin.createTrackingCookie) {
+      Munchkin.createTrackingCookie(true);
+    }
+  } catch (e) {
+    if (MKTO_DEBUG) console.warn('[Munchkin cookie]', e);
+  }
+
+  // === Submit hidden form ===
+  loadForms2(function () {
+    window.MktoForms2.loadForm(MKTO_BASE, MKTO_ID, MKTO_FORM_ID, function (form) {
+      form.vals({ Email: email /* , Source: 'Chatbot' etc. */ });
+      form.onSuccess(function () { return false; });
+      form.submit();
+      if (MKTO_DEBUG) console.log('[Form submitted]', email);
+    });
+  });
+})();
+</script>

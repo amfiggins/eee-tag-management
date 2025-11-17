@@ -1,0 +1,209 @@
+<script>
+// Script Name: 3E_3EI Recruiter Unified
+// Author: Anthony Figgins
+// Description: Unified 3EI Recruiter iframe loader that supports dev, prod, or disabled modes via 3E config.
+// Version: 1.0.5
+// Date Updated: 2025-09-26
+
+(function (window, document) {
+  'use strict';
+
+  var CFG = {{3E config}};
+  var IFRAME_ID = 'chat-widget-iframe';
+  
+  // Environment configuration
+  var ENVIRONMENTS = {
+    disabled: { enabled: false },
+    dev: {
+      enabled: true,
+      baseUrl: 'http://alb-pmsquare-dev-1652163778.us-east-1.elb.amazonaws.com',
+      botId: CFG.chatBotDevId,
+      trustedOrigins: { 'http://alb-pmsquare-dev-1652163778.us-east-1.elb.amazonaws.com': true }
+    },
+    prod: {
+      enabled: true,
+      baseUrl: 'https://kb.3enrollment.com',
+      botId: CFG.chatBotProdId,
+      trustedOrigins: { 'https://kb.3enrollment.com': true }
+    }
+  };
+
+  // Get current environment from config
+  var currentEnv = String(CFG.chatBotEnvironment || 'disabled').toLowerCase();
+  var env = ENVIRONMENTS[currentEnv];
+
+  // Log script name and version on load (only in debug mode)
+  if (CFG.debugMode === 'true') {
+    console.log('[3E_ChatBot Unified] v1.0.5');
+  }
+
+  // Exit if disabled or invalid environment
+  if (!env || !env.enabled) {
+    if (CFG.debugMode === 'true') {
+      console.log('[3E ChatBot] Disabled or invalid environment:', currentEnv);
+    }
+    return;
+  }
+
+  // Validate required bot ID
+  if (!env.botId) {
+    console.error('[3E ChatBot] Missing bot ID for environment:', currentEnv);
+    return;
+  }
+
+  var IFRAME_SRC = env.baseUrl + '/bot/' + env.botId;
+  var TRUSTED_ORIGINS = env.trustedOrigins;
+  var DEBUG = CFG.debugMode === 'true';
+
+  function onReady(cb) {
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      try { cb(); } catch(e) { if (DEBUG) console.error('[3E ChatBot] onReady error:', e); }
+    } else if (document.addEventListener) {
+      document.addEventListener('DOMContentLoaded', function() {
+        try { cb(); } catch(e) { if (DEBUG) console.error('[3E ChatBot] DOMContentLoaded error:', e); }
+      });
+    } else {
+      var old = window.onload;
+      window.onload = function() {
+        if (old) old();
+        try { cb(); } catch(e) { if (DEBUG) console.error('[3E ChatBot] window.onload error:', e); }
+      };
+    }
+  }
+
+  function createIframe() {
+    var el = document.getElementById(IFRAME_ID);
+    if (el) return el;
+
+    el = document.createElement('iframe');
+    el.id = IFRAME_ID;
+    el.src = IFRAME_SRC;
+    el.title = 'Chat Widget';
+    el.setAttribute('aria-label', 'Chat Widget');
+    el.setAttribute('frameborder', '0');
+    el.setAttribute('scrolling', 'no');
+
+    var s = el.style;
+    s.position = 'fixed';
+    s.bottom = '40px';
+    s.right = '40px';
+    s.border = 'none';
+    s.margin = '0';
+    s.padding = '0';
+    s.overflow = 'hidden';
+    s.zIndex = '2147483647';
+    s.width = '500px';
+    s.visibility = 'hidden';
+    s.opacity = '0';
+    s.transition = 'opacity 120ms ease';
+    el.setAttribute('aria-hidden', 'true');
+
+    document.body.appendChild(el);
+    
+    if (DEBUG) {
+      console.log('[3E ChatBot] Iframe created for environment:', currentEnv, 'URL:', IFRAME_SRC);
+    }
+    
+    return el;
+  }
+
+  function applyMobileSize(iframe) {
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    if (vw && vw < 500) {
+      iframe.style.width = Math.round(vw * 0.95) + 'px';
+      iframe.style.bottom = '10px';
+      iframe.style.right = '10px';
+    } else {
+      iframe.style.bottom = '40px';
+      iframe.style.right = '40px';
+    }
+  }
+
+  function debounce(fn, wait) {
+    var t;
+    return function() {
+      var a = arguments, c = this;
+      clearTimeout(t);
+      t = setTimeout(function() { fn.apply(c, a); }, wait);
+    };
+  }
+
+  function isTrusted(event) {
+    return event && event.origin && TRUSTED_ORIGINS[event.origin] === true;
+  }
+
+  function reveal(iframe) {
+    if (iframe.getAttribute('data-shown') === '1') return;
+    
+    iframe.style.visibility = 'visible';
+    if (window.requestAnimationFrame) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          iframe.style.opacity = '1';
+        });
+      });
+    } else {
+      setTimeout(function() { iframe.style.opacity = '1'; }, 0);
+    }
+    
+    iframe.setAttribute('aria-hidden', 'false');
+    iframe.setAttribute('data-shown', '1');
+    
+    if (DEBUG) {
+      console.log('[3E ChatBot] Iframe revealed for environment:', currentEnv);
+    }
+  }
+
+  function handleMessage(event) {
+    if (!isTrusted(event)) return;
+
+    var data = event && event.data ? event.data : null;
+    var payload = data && data.payload ? data.payload : data;
+
+    if (payload) {
+      var iframe = document.getElementById(IFRAME_ID);
+      if (iframe) {
+        reveal(iframe);
+      }
+    }
+
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var iframe = document.getElementById(IFRAME_ID);
+    
+    if (iframe) {
+      if (vw && vw < 500) {
+        applyMobileSize(iframe);
+      } else if (payload && payload.width) {
+        iframe.style.width = (typeof payload.width === 'number' ? (payload.width + 'px') : String(payload.width));
+      }
+      if (payload && payload.height) {
+        iframe.style.height = (typeof payload.height === 'number' ? (payload.height + 'px') : String(payload.height));
+      }
+    }
+  }
+
+  onReady(function() {
+    try {
+      var iframe = createIframe();
+      applyMobileSize(iframe);
+
+      iframe.addEventListener('load', function() {
+        applyMobileSize(iframe);
+        reveal(iframe);
+      });
+
+      window.addEventListener('message', handleMessage);
+      window.addEventListener('resize', debounce(function() {
+        var iframe = document.getElementById(IFRAME_ID);
+        if (iframe) applyMobileSize(iframe);
+      }, 150));
+
+      if (DEBUG) {
+        console.log('[3E ChatBot] Initialized for environment:', currentEnv);
+      }
+    } catch(e) {
+      if (DEBUG) console.error('[3E ChatBot] Initialization error:', e);
+    }
+  });
+})(window, document);
+</script>

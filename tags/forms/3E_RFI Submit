@@ -1,0 +1,89 @@
+<script>
+// Script Name: 3E_RFI Submit
+// Author: Anthony Figgins
+// Description: Handles Marketo RFI form submission, pushes event to dataLayer, and manages redirect.
+// Version: 1.2.9
+// Date Updated: 2025-10-29
+// Dependencies: 3E Config, Marketo Forms2
+
+  (function() {
+    // Check for hardcoded RFI submit script (minified inline script)
+    var hasHardcodedRFI = false;
+    var scripts = document.getElementsByTagName('script');
+    
+    for (var i = 0; i < scripts.length; i++) {
+      var scriptText = scripts[i].textContent || '';
+      
+      // Look for unique identifier from the minified combined script
+      // This script uses google_tag_manager["rm"]["227984193"](69) pattern
+      if (scriptText.indexOf('google_tag_manager["rm"]["227984193"]') !== -1) {
+        hasHardcodedRFI = true;
+        console.log('[3E_RFI Submit] Hardcoded combined script detected (google_tag_manager pattern)');
+        break;
+      }
+      
+      // Also check for scripts that push rfi_submission but don't have our GTM identifiers
+      if (scriptText.indexOf('dataLayer.push({event:"rfi_submission"})') !== -1 || 
+          scriptText.indexOf("dataLayer.push({event:'rfi_submission'})") !== -1 ||
+          scriptText.indexOf('dataLayer.push({"event":"rfi_submission"})') !== -1 ||
+          scriptText.indexOf("dataLayer.push({'event':'rfi_submission'})") !== -1) {
+        // Check if it's NOT our GTM script (which has unique identifiers)
+        if (scriptText.indexOf('[3E_RFI Submit]') === -1 && 
+            scriptText.indexOf('{{3E config}}') === -1 &&
+            scriptText.indexOf('checkMktoForm(attempts)') === -1 &&
+            scriptText.indexOf('function checkMktoForm') === -1) {
+          hasHardcodedRFI = true;
+          console.log('[3E_RFI Submit] Hardcoded RFI submit script detected (pushes rfi_submission without GTM identifiers)');
+          break;
+        }
+      }
+    }
+    
+    if (hasHardcodedRFI) {
+      console.log('[3E_RFI Submit] Skipping execution - hardcoded script found');
+      return;
+    }
+
+  (function checkMktoForm(attempts) {
+    // Get debug mode from 3E Config
+    var CFG;
+    try { 
+      CFG = {{3E config}}; 
+    } catch(e) { 
+      CFG = {}; 
+    }
+    var DEBUG = CFG && CFG.debugMode === 'true';
+
+    // Log script name and version on load (only in debug mode)
+    if (DEBUG) {
+      console.log('[3E_RFI Submit] v1.2.9');
+    }
+
+    // Check if MktoForms2 is available
+    if (typeof MktoForms2 !== 'undefined') {
+      MktoForms2.whenReady(function(form) {
+        form.onSuccess(function(values, followUpUrl) {
+          // Push the event to the dataLayer
+          dataLayer.push({'event': 'rfi_submission'});
+
+          // Redirect to the Thank You page
+          if (followUpUrl) {
+            window.location.href = followUpUrl;
+          }
+
+          // Prevent the default Marketo redirect behavior
+          return false;
+        });
+      });
+    } else if (attempts < 10) {
+      // Retry after 1 second if MktoForms2 is not available and we haven't hit the max attempts
+      setTimeout(function() {
+        checkMktoForm(attempts + 1);
+      }, 1000);
+    } else {
+      // If MktoForms2 is not available after 10 attempts, log an error
+      console.error('MktoForms2 is not defined. Marketo forms failed to load after 10 attempts.');
+    }
+  })(0); // Start with 0 attempts
+  })(); // Close outer detection wrapper
+</script>
