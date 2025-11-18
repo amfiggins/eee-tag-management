@@ -7,6 +7,29 @@ Centralized repository for managing Google Tag Manager (GTM) tags and automation
 This repository contains:
 - **Standard GTM Tags**: Production-ready tags for client deployment
 - **Automation Tools**: API-based tools for updating tags across multiple containers
+- **Web Interface**: Modern web UI for managing tags (recommended)
+
+## Quick Start
+
+### 🚀 Launch Web Interface (Easiest)
+
+**Mac/Linux:**
+```bash
+./start-web.sh
+```
+
+**Windows:**
+```bash
+start-web.bat
+```
+
+This will automatically:
+- ✅ Check for Node.js and Python
+- ✅ Install all dependencies
+- ✅ Start the web interface
+- ✅ Open in your browser
+
+See [QUICK_START.md](QUICK_START.md) for more details.
 
 ## Repository Structure
 
@@ -17,12 +40,17 @@ eee-tag-management/
 │   ├── forms/              # Form validation and submission tags
 │   ├── tracking/           # Event tracking and conversion tags
 │   ├── ui/                 # UI enhancement tags (popups, buttons, etc.)
-│   ├── integrations/       # Third-party integration tags
+│   ├── integrations/        # Third-party integration tags
 │   └── templates/          # GTM variable templates
 │
 ├── automation/              # API tools for tag management
 │   ├── gtm_tag_updater.py  # Main automation script
 │   └── requirements-gtm.txt # Python dependencies
+│
+├── web/                     # Web interface (Next.js)
+│   ├── app/                # Next.js app directory
+│   ├── components/         # React components
+│   └── utils/              # Utilities
 │
 └── docs/                   # Documentation
     ├── GTM_TAG_UPDATER_SETUP.md
@@ -33,7 +61,9 @@ eee-tag-management/
 ## Quick Links
 
 - **[Tag Documentation](tags/README.md)** - Complete list of all tags with descriptions
-- **[Automation Tools](automation/README.md)** - Tools for updating tags across containers
+- **[Automation Tools](automation/README.md)** - Command-line tools for updating tags
+- **[Web Interface](web/README.md)** - Web UI for managing tags (recommended)
+- **[Quick Start Guide](QUICK_START.md)** - Get started quickly
 - **[Git Setup Guide](docs/GIT_SETUP.md)** - Repository setup and workflow
 
 ## Getting Started
@@ -47,6 +77,12 @@ eee-tag-management/
 
 ### For Tag Updates
 
+**Option 1: Web Interface (Recommended)**
+1. Run `./start-web.sh` (Mac/Linux) or `start-web.bat` (Windows)
+2. Use the web interface to search and update tags
+3. Select containers and update with one click
+
+**Option 2: Command Line**
 1. Install automation dependencies:
    ```bash
    cd automation
@@ -62,7 +98,7 @@ eee-tag-management/
      --script-file "../tags/ui/3E_Pop-up" \
      --account-id "YOUR_ACCOUNT_ID" \
      --credentials "credentials.json" \
-     --dry-run
+     --list-only
    ```
 
 ## Tag Categories
@@ -116,7 +152,8 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 
 - Tag versions are tracked in file headers
 - Use automation tools to push updates across containers
-- Always test with `--dry-run` before deploying
+- Always test with `--list-only` or `--dry-run` before deploying
+- Web interface shows version comparison automatically
 
 ## Contributing
 
@@ -147,6 +184,7 @@ For questions or issues:
 - Review tag documentation in [`tags/README.md`](tags/README.md)
 - Check automation documentation in [`automation/README.md`](automation/README.md)
 - See setup guides in [`docs/`](docs/)
+- See [Quick Start Guide](QUICK_START.md) for getting started
 
 ## License
 

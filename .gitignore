@@ -30,6 +30,7 @@ wheels/
 credentials.json
 gtm-service-account.json
 gtm-oauth-credentials.json
+token.json
 *.key
 *.pem
 .env
