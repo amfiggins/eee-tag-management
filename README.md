@@ -13,6 +13,13 @@ This repository contains:
 
 ### 🚀 Launch Web Interface (Easiest)
 
+**Python (Cross-platform):**
+```bash
+python3 start-web.py
+# or
+python start-web.py
+```
+
 **Mac/Linux:**
 ```bash
 ./start-web.sh

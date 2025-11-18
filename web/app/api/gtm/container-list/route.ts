@@ -5,13 +5,14 @@
  * Returns partial results on timeout
  * 
  * Author: Anthony Figgins
- * Version: 1.0.5
+ * Version: 1.0.6
  * Date Updated: 2025-11-17
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import { join } from 'path';
+import { findPythonExecutable } from '@/utils/python-executor';
 
 // Increase timeout for this route (default is 10s, we need up to 10 minutes)
 export const maxDuration = 600; // 10 minutes in seconds
@@ -61,7 +62,8 @@ export async function POST(request: NextRequest) {
 
     // Use spawn to get real-time output for progress tracking
     return new Promise<NextResponse>((resolve) => {
-        const pythonProcess = spawn('python3', [
+        const pythonExecutable = findPythonExecutable();
+        const pythonProcess = spawn(pythonExecutable, [
           pythonScript,
           '--tag-name', '3E_Pop-up',
           '--account-id', accountId,

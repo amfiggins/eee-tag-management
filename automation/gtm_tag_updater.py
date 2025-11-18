@@ -4,7 +4,7 @@ GTM Tag Updater Script
 Updates a specific tag across multiple Google Tag Manager containers.
 
     Author: Anthony Figgins
-    Version: 1.0.7
+    Version: 1.0.8
     Date Updated: 2025-11-17
 
 Requirements:
@@ -26,6 +26,13 @@ import warnings
 from pathlib import Path
 from typing import List, Dict, Optional
 
+# Check Python version early - Google API libraries require Python 3.10+ for some features
+if sys.version_info < (3, 10):
+    print("WARNING: Python 3.10 or higher is recommended for full compatibility.", file=sys.stderr)
+    print(f"Current version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", file=sys.stderr)
+    print("You may encounter errors with 'importlib.metadata.packages_distributions'.", file=sys.stderr)
+    print("To upgrade on macOS: brew install python@3.11", file=sys.stderr)
+
 # Suppress Python version warnings from Google API
 warnings.filterwarnings('ignore', category=FutureWarning, module='google.api_core')
 
@@ -33,10 +40,21 @@ try:
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
-except ImportError:
-    print("ERROR: Required packages not installed.")
-    print("Install with: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib")
-    sys.exit(1)
+except ImportError as e:
+    error_msg = str(e)
+    if "packages_distributions" in error_msg or "importlib.metadata" in error_msg:
+        print("ERROR: Python version compatibility issue detected.", file=sys.stderr)
+        print(f"Current Python version: {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}", file=sys.stderr)
+        print("The Google API libraries require Python 3.10+ for full compatibility.", file=sys.stderr)
+        print("To upgrade on macOS:", file=sys.stderr)
+        print("  1. Install Homebrew if not already installed: /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"", file=sys.stderr)
+        print("  2. Install Python 3.11: brew install python@3.11", file=sys.stderr)
+        print("  3. Use Python 3.11: python3.11 gtm_tag_updater.py ...", file=sys.stderr)
+        sys.exit(1)
+    else:
+        print("ERROR: Required packages not installed.", file=sys.stderr)
+        print("Install with: pip install google-api-python-client google-auth-httplib2 google-auth-oauthlib", file=sys.stderr)
+        sys.exit(1)
 
 # Import rate limiter
 try:
@@ -174,23 +192,69 @@ class GTMTagUpdater:
         print(f"[DEBUG] Service built successfully", flush=True)
         return service
     
-    def list_containers(self) -> List[Dict]:
+    def list_accounts(self) -> List[Dict]:
         """
-        List all containers in the account.
-        Returns list of container dicts with containerId and name fields.
+        List all GTM accounts the user has access to.
+        Returns list of account dicts with accountId and name fields.
         """
+        try:
+            accounts = self._api_call_with_retry(
+                self.service.accounts().list()
+            )
+            if accounts:
+                return accounts.get('account', [])
+            return []
+        except HttpError as e:
+            print(f"ERROR: Failed to list accounts: {e}")
+            return []
+    
+    def list_containers(self, account_id: Optional[str] = None) -> List[Dict]:
+        """
+        List all containers in the specified account (or self.account_id if not specified).
+        Returns list of container dicts with containerId, name, and accountId fields.
+        """
+        target_account_id = account_id or self.account_id
         try:
             containers = self._api_call_with_retry(
                 self.service.accounts().containers().list(
-                parent=f'accounts/{self.account_id}'
+                parent=f'accounts/{target_account_id}'
                 )
             )
             if containers:
-                return containers.get('container', [])
+                container_list = containers.get('container', [])
+                # Add accountId to each container for tracking
+                for container in container_list:
+                    container['accountId'] = target_account_id
+                return container_list
             return []
         except HttpError as e:
-            print(f"ERROR: Failed to list containers: {e}")
+            print(f"ERROR: Failed to list containers for account {target_account_id}: {e}")
             return []
+    
+    def list_all_containers(self) -> List[Dict]:
+        """
+        List all containers from all accounts the user has access to.
+        Returns list of container dicts with containerId, name, and accountId fields.
+        """
+        all_containers = []
+        accounts = self.list_accounts()
+        
+        if not accounts:
+            print("WARNING: No accounts found or failed to list accounts")
+            return []
+        
+        print(f"Found {len(accounts)} account(s), listing containers from all accounts...")
+        
+        for account in accounts:
+            account_id = account.get('accountId', '')
+            account_name = account.get('name', 'Unknown')
+            print(f"  Listing containers from account: {account_name} ({account_id})")
+            
+            containers = self.list_containers(account_id)
+            all_containers.extend(containers)
+            print(f"    Found {len(containers)} container(s) in account {account_id}")
+        
+        return all_containers
     
     def get_container(self, container_id: str) -> Optional[Dict]:
         """Get container details including fingerprint for change detection."""
@@ -205,12 +269,13 @@ class GTMTagUpdater:
             print(f"ERROR: Failed to get container {container_id}: {e}")
             return None
     
-    def get_workspace(self, container_id: str) -> Optional[str]:
+    def get_workspace(self, container_id: str, account_id: Optional[str] = None) -> Optional[str]:
         """Get the default workspace ID for a container."""
+        target_account_id = account_id or self.account_id
         try:
             workspaces = self._api_call_with_retry(
                 self.service.accounts().containers().workspaces().list(
-                parent=f'accounts/{self.account_id}/containers/{container_id}'
+                parent=f'accounts/{target_account_id}/containers/{container_id}'
                 )
             )
             
@@ -221,6 +286,9 @@ class GTMTagUpdater:
                     return workspace_list[0]['workspaceId']
             return None
         except HttpError as e:
+            # Return None for permission errors (404/403) - let caller handle gracefully
+            if e.resp.status in [403, 404]:
+                return None
             print(f"ERROR: Failed to get workspace for container {container_id}: {e}")
             return None
     
@@ -326,26 +394,28 @@ class GTMTagUpdater:
         except HttpError as e:
             return []
     
-    def get_tags_in_container(self, container_id: str, filter_3e: bool = False) -> List[Dict]:
+    def get_tags_in_container(self, container_id: str, filter_3e: bool = False, account_id: Optional[str] = None) -> List[Dict]:
         """
         Get all tags in a container with their details.
         
         Args:
             container_id: Container ID
             filter_3e: If True, only return tags with '3E' or 'Template' in the name
+            account_id: Optional account ID (if different from the initialized account)
         
         Returns:
             List of tag dictionaries with tagId, name, and version (if available)
         """
+        target_account_id = account_id or self.account_id
         try:
-            workspace_id = self.get_workspace(container_id)
+            workspace_id = self.get_workspace(container_id, account_id=target_account_id)
             if not workspace_id:
-                # Return empty list silently - no workspace means no tags
+                # Return empty list silently - no workspace means no tags or no permission
                 return []
             
             tags = self._api_call_with_retry(
                 self.service.accounts().containers().workspaces().tags().list(
-                    parent=f'accounts/{self.account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                    parent=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
                 )
             )
             
@@ -373,6 +443,9 @@ class GTMTagUpdater:
             
             return result
         except HttpError as e:
+            # Return empty list for permission errors - let caller handle gracefully
+            if e.resp.status in [403, 404]:
+                return []
             # Don't print errors - return empty list instead
             # The calling code can handle empty results
             return []
@@ -615,6 +688,12 @@ Examples:
     )
     
     parser.add_argument(
+        '--all-accounts',
+        action='store_true',
+        help='List containers from all accounts the user has access to (not just the specified account)'
+    )
+    
+    parser.add_argument(
         '--verbose',
         action='store_true',
         help='Show detailed information including all tags found in containers'
@@ -675,10 +754,14 @@ Examples:
         container_ids = [c.strip() for c in args.containers.split(',')]
         # Extract container ID from GTM-XXXXX format if needed
         container_ids = [c.replace('GTM-', '') if c.startswith('GTM-') else c for c in container_ids]
+        containers = None  # We don't have full container objects when using --containers
     else:
         # Get all containers
         print("\nFetching all containers...")
-        containers = updater.list_containers()
+        if args.all_accounts:
+            containers = updater.list_all_containers()
+        else:
+            containers = updater.list_containers()
         if not containers:
             print("ERROR: No containers found or failed to list containers")
             sys.exit(1)
@@ -691,18 +774,25 @@ Examples:
         print(f"\n[CONTAINERS ONLY] Listing {len(container_ids)} container(s)...")
         print("⚠️  CONTAINERS-ONLY MODE: Only listing container IDs and names, no tag processing.\n")
         
-        # Create a map of container_id -> name from the original containers list
-        # (list_containers already returns names, so we don't need extra API calls)
+        # Create maps for container info from the original containers list
         container_name_map = {}
+        container_account_map = {}
         if containers:
             for c in containers:
-                container_name_map[c.get('containerId', '')] = c.get('name', '')
+                container_id = c.get('containerId', '')
+                container_name_map[container_id] = c.get('name', '')
+                container_account_map[container_id] = c.get('accountId', '')
         
-        # Print container IDs and names (names already available from list_containers)
+        # Print container IDs, names, and account IDs
         for container_id in container_ids:
             container_name = container_name_map.get(container_id, '')
-            if container_name:
+            account_id = container_account_map.get(container_id, '')
+            if container_name and account_id:
+                print(f"Container ID: {container_id} | Name: {container_name} | Account: {account_id}")
+            elif container_name:
                 print(f"Container ID: {container_id} | Name: {container_name}")
+            elif account_id:
+                print(f"Container ID: {container_id} | Account: {account_id}")
             else:
                 print(f"Container ID: {container_id}")
         

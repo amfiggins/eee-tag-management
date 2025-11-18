@@ -5,13 +5,14 @@
  * Includes timeout detection and detailed error reporting
  * 
  * Author: Anthony Figgins
- * Version: 1.1.1
+ * Version: 1.1.2
  * Date Updated: 2025-11-17
  */
 
 import { NextRequest } from 'next/server';
 import { spawn } from 'child_process';
 import { join } from 'path';
+import { findPythonExecutable } from '@/utils/python-executor';
 
 // Increase timeout for this route (default is 10s, we need up to 10 minutes for streaming)
 export const maxDuration = 600; // 10 minutes in seconds
@@ -74,7 +75,8 @@ export async function POST(request: NextRequest) {
 
         console.log('Starting Python process with args:', pythonArgs);
         
-        const pythonProcess = spawn('python3', pythonArgs, {
+        const pythonExecutable = findPythonExecutable();
+        const pythonProcess = spawn(pythonExecutable, pythonArgs, {
           cwd: join(process.cwd(), '..', 'automation'),
         });
 

@@ -5,7 +5,7 @@
  * Improved error handling to always return valid JSON
  * 
  * Author: Anthony Figgins
- * Version: 1.0.2
+ * Version: 1.0.5
  * Date Updated: 2025-11-17
  */
 
@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { writeFileSync, existsSync, unlinkSync } from 'fs';
+import { findPythonExecutable } from '@/utils/python-executor';
 
 interface ContainerTag {
   tagId: string;
@@ -53,23 +54,39 @@ export async function POST(request: NextRequest) {
       const pythonCode = `import sys
 import os
 import json
+# Redirect all print() statements to stderr so they don't interfere with JSON output
+sys.stdout = sys.stderr
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 try:
     from gtm_tag_updater import GTMTagUpdater
     updater = GTMTagUpdater('${fixedCredentialsPath}', '${accountId}')
-    tags = updater.get_tags_in_container('${containerId}', filter_3e=${filter3E ? 'True' : 'False'})
-    print(json.dumps(tags))
+    # Use the container's accountId if different from the primary account
+    # Pass accountId to get_tags_in_container so it uses the correct account
+    tags = updater.get_tags_in_container('${containerId}', filter_3e=${filter3E ? 'True' : 'False'}, account_id='${accountId}')
+    # Write JSON directly to stdout file descriptor (fd 1) to bypass the stdout redirection
+    result = json.dumps({"success": True, "tags": tags})
+    os.write(1, result.encode('utf-8'))
+    os.write(1, b'\\n')
 except Exception as e:
-    # Return empty list on error, not an error message
-    print(json.dumps([]))
+    # Return error details as JSON
+    error_msg = str(e)
+    error_type = type(e).__name__
+    # Check for Python version compatibility issues
+    if "packages_distributions" in error_msg or "importlib.metadata" in error_msg:
+        error_msg = "Python version compatibility error: This requires Python 3.10+. You are using Python " + str(sys.version_info.major) + "." + str(sys.version_info.minor) + ". Please upgrade Python or use a virtual environment with Python 3.10+."
+    result = json.dumps({"success": False, "error": error_msg, "error_type": error_type})
+    os.write(1, result.encode('utf-8'))
+    os.write(1, b'\\n')
 `;
 
       try {
         // Write temporary script
         writeFileSync(tmpScriptPath, pythonCode, 'utf8');
         
-        // Execute it
-        const pythonProcess = spawn('python3', ['-u', tmpScriptPath], {
+        // Execute it with the best available Python
+        const pythonExecutable = findPythonExecutable();
+        const pythonProcess = spawn(pythonExecutable, ['-u', tmpScriptPath], {
           cwd: join(process.cwd(), '..', 'automation'),
           stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -147,7 +164,24 @@ except Exception as e:
             }
 
             // Parse JSON output
-            const tags: ContainerTag[] = JSON.parse(stdoutTrimmed);
+            const result = JSON.parse(stdoutTrimmed);
+            
+            // Check if Python script returned an error
+            if (result.success === false) {
+              resolve(NextResponse.json(
+                { 
+                  success: false,
+                  error: result.error || 'Python script returned an error',
+                  errorType: result.error_type,
+                  details: `STDERR: ${stderr.substring(0, 1000)}`
+                },
+                { status: 500 }
+              ));
+              return;
+            }
+
+            // Extract tags from result (could be direct array or in result.tags)
+            const tags: ContainerTag[] = Array.isArray(result) ? result : (result.tags || []);
 
             resolve(NextResponse.json({
               success: true,

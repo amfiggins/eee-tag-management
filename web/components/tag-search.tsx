@@ -24,14 +24,14 @@ interface Tag {
 }
 
 interface TagSearchProps {
+  accountId: string;
+  credentialsPath: string;
   onSearchComplete: (results: any, tagNames: string[]) => void;
 }
 
-export default function TagSearch({ onSearchComplete }: TagSearchProps) {
+export default function TagSearch({ accountId, credentialsPath, onSearchComplete }: TagSearchProps) {
   const [availableTags, setAvailableTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
-  const [accountId, setAccountId] = useState('4702086067');
-  const [credentialsPath, setCredentialsPath] = useState('automation/gtm-oauth-credentials.json');
   const [loading, setLoading] = useState(false);
   const [loadingTags, setLoadingTags] = useState(true);
   const [error, setError] = useState('');
@@ -320,25 +320,6 @@ export default function TagSearch({ onSearchComplete }: TagSearchProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium mb-2 text-gray-700">GTM Account ID</label>
-          <Input
-            type="text"
-            value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-2 text-gray-700">Credentials Path</label>
-          <Input
-            type="text"
-            value={credentialsPath}
-            onChange={(e) => setCredentialsPath(e.target.value)}
-          />
-        </div>
-      </div>
 
       {searchStatus && (
         <div className="bg-blue-50 border-2 border-blue-500 text-blue-700 p-3 rounded-lg text-sm">

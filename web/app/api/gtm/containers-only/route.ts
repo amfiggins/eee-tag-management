@@ -4,20 +4,22 @@
  * Uses --containers-only flag to skip all tag processing
  * 
  * Author: Anthony Figgins
- * Version: 1.0.2
+ * Version: 1.0.3
  * Date Updated: 2025-11-17
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import { join } from 'path';
+import { findPythonExecutable } from '@/utils/python-executor';
 
-// Increase timeout
-export const maxDuration = 60; // 1 minute should be enough for just listing
+// Increase timeout - longer when listing all accounts
+export const maxDuration = 300; // 5 minutes (all accounts can take longer due to rate limiting)
 
 interface ContainerListItem {
   containerId: string;
   containerName?: string;
+  accountId?: string;
 }
 
 /**
@@ -27,7 +29,7 @@ interface ContainerListItem {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { accountId, credentialsPath } = body;
+    const { accountId, credentialsPath, allAccounts } = body;
 
     if (!accountId || !credentialsPath) {
       return NextResponse.json(
@@ -48,14 +50,22 @@ export async function POST(request: NextRequest) {
 
     return new Promise<NextResponse>((resolve) => {
       // Use the new --containers-only flag - no tag processing at all!
-      const pythonProcess = spawn('python3', [
+      const pythonExecutable = findPythonExecutable();
+      const args = [
         '-u', // Unbuffered
         pythonScript,
         '--account-id', accountId,
         '--credentials', fixedCredentialsPath,
         '--containers-only', // This flag skips all tag processing
         '--delay', '1.1' // Respect GTM rate limits (100 req/100 sec = 1 req/sec, use 1.1 to be safe)
-      ], {
+      ];
+      
+      // Add --all-accounts flag if requested
+      if (allAccounts) {
+        args.push('--all-accounts');
+      }
+      
+      const pythonProcess = spawn(pythonExecutable, args, {
         cwd: join(process.cwd(), '..', 'automation'),
       });
 
@@ -82,23 +92,46 @@ export async function POST(request: NextRequest) {
             console.log(`Found ${total} containers total`);
           }
           
-          // Look for "Container ID: XXXXX | Name: YYYY" pattern (from --containers-only mode)
-          const containerWithNameMatch = line.match(/^Container ID:\s*(\d+)\s*\|\s*Name:\s*(.+)$/);
-          if (containerWithNameMatch) {
-            const containerId = containerWithNameMatch[1];
-            const containerName = containerWithNameMatch[2].trim();
+          // Look for "Container ID: XXXXX | Name: YYYY | Account: ZZZZZ" pattern (from --containers-only mode with --all-accounts)
+          const containerWithAllMatch = line.match(/^Container ID:\s*(\d+)\s*\|\s*Name:\s*(.+?)\s*\|\s*Account:\s*(\d+)$/);
+          if (containerWithAllMatch) {
+            const containerId = containerWithAllMatch[1];
+            const containerName = containerWithAllMatch[2].trim();
+            const accountId = containerWithAllMatch[3];
             if (!containers.find(c => c.containerId === containerId)) {
-              containers.push({ containerId, containerName });
-              console.log(`Found container: ${containerId} (${containerName}) (${containers.length} so far)`);
+              containers.push({ containerId, containerName, accountId });
+              console.log(`Found container: ${containerId} (${containerName}) in account ${accountId} (${containers.length} so far)`);
             }
           } else {
-            // Fallback: Look for "Container ID: XXXXX" pattern (without name)
-            const containerIdMatch = line.match(/^Container ID:\s*(\d+)$/);
-            if (containerIdMatch) {
-              const containerId = containerIdMatch[1];
+            // Look for "Container ID: XXXXX | Name: YYYY" pattern (from --containers-only mode)
+            const containerWithNameMatch = line.match(/^Container ID:\s*(\d+)\s*\|\s*Name:\s*(.+)$/);
+            if (containerWithNameMatch) {
+              const containerId = containerWithNameMatch[1];
+              const containerName = containerWithNameMatch[2].trim();
               if (!containers.find(c => c.containerId === containerId)) {
-                containers.push({ containerId });
-                console.log(`Found container: ${containerId} (${containers.length} so far)`);
+                containers.push({ containerId, containerName });
+                console.log(`Found container: ${containerId} (${containerName}) (${containers.length} so far)`);
+              }
+            } else {
+              // Look for "Container ID: XXXXX | Account: ZZZZZ" pattern (with account but no name)
+              const containerWithAccountMatch = line.match(/^Container ID:\s*(\d+)\s*\|\s*Account:\s*(\d+)$/);
+              if (containerWithAccountMatch) {
+                const containerId = containerWithAccountMatch[1];
+                const accountId = containerWithAccountMatch[2];
+                if (!containers.find(c => c.containerId === containerId)) {
+                  containers.push({ containerId, accountId });
+                  console.log(`Found container: ${containerId} in account ${accountId} (${containers.length} so far)`);
+                }
+              } else {
+                // Fallback: Look for "Container ID: XXXXX" pattern (without name or account)
+                const containerIdMatch = line.match(/^Container ID:\s*(\d+)$/);
+                if (containerIdMatch) {
+                  const containerId = containerIdMatch[1];
+                  if (!containers.find(c => c.containerId === containerId)) {
+                    containers.push({ containerId });
+                    console.log(`Found container: ${containerId} (${containers.length} so far)`);
+                  }
+                }
               }
             }
           }
@@ -168,6 +201,8 @@ export async function POST(request: NextRequest) {
         ));
       });
 
+      // Longer timeout when listing all accounts (more API calls due to rate limiting)
+      const timeoutDuration = allAccounts ? 300000 : 60000; // 5 minutes for all accounts, 1 minute for single account
       timeoutId = setTimeout(() => {
         if (resolved) return;
         pythonProcess.kill();
@@ -182,7 +217,7 @@ export async function POST(request: NextRequest) {
           },
           { status: containers.length > 0 ? 200 : 500 }
         ));
-      }, 60000);
+      }, timeoutDuration);
     });
   } catch (error: any) {
     return NextResponse.json(

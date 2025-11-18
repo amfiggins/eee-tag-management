@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { spawn } from 'child_process';
 import { join } from 'path';
-
-const execAsync = promisify(exec);
+import { findPythonExecutable } from '@/utils/python-executor';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { 
-      tagName, 
+      tagName, // Container tag name (for finding tag in GTM)
+      repoTagName, // Repo tag name (for finding file) - optional, defaults to tagName
       accountId, 
       credentialsPath, 
       containerIds, 
@@ -23,26 +22,82 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Get script file path
-    const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(tagName), tagName);
+    // Use repo tag name if provided, otherwise use container tag name
+    const fileTagName = repoTagName || tagName;
+    
+    // Get script file path using the repo tag name
+    const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(fileTagName), fileTagName);
     const pythonScript = join(process.cwd(), '..', 'automation', 'gtm_tag_updater.py');
     
-    // Build command
+    // Fix credentials path - if it starts with "automation/", remove that since we're running from automation directory
+    let fixedCredentialsPath = credentialsPath;
+    if (credentialsPath.startsWith('automation/')) {
+      fixedCredentialsPath = credentialsPath.replace('automation/', '');
+    }
+    
+    // Use spawn to execute Python script
+    const pythonExecutable = findPythonExecutable();
     const containersStr = containerIds.join(',');
-    const command = `python3 "${pythonScript}" --tag-name "${tagName}" --script-file "${scriptPath}" --account-id "${accountId}" --credentials "${credentialsPath}" --containers "${containersStr}" --delay 1.0`;
     
-    const { stdout, stderr } = await execAsync(command, {
-      cwd: join(process.cwd(), '..', 'automation'),
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    
-    // Parse results
-    const results = parseUpdateOutput(stdout);
-    
-    return NextResponse.json({
-      success: true,
-      results,
-      output: stdout,
+    return new Promise<NextResponse>((resolve) => {
+      const pythonProcess = spawn(pythonExecutable, [
+        '-u', // Unbuffered
+        pythonScript,
+        '--tag-name', tagName,
+        '--script-file', scriptPath,
+        '--account-id', accountId,
+        '--credentials', fixedCredentialsPath,
+        '--containers', containersStr,
+        '--delay', '1.0',
+      ], {
+        cwd: join(process.cwd(), '..', 'automation'),
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      pythonProcess.stdout.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      pythonProcess.stderr.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      pythonProcess.on('close', (code: number) => {
+        if (code !== 0) {
+          resolve(NextResponse.json(
+            { 
+              success: false,
+              error: `Python script exited with code ${code}`,
+              details: stderr || stdout
+            },
+            { status: 500 }
+          ));
+          return;
+        }
+
+        // Parse results
+        const results = parseUpdateOutput(stdout);
+        
+        resolve(NextResponse.json({
+          success: true,
+          results,
+          output: stdout,
+        }));
+      });
+
+      pythonProcess.on('error', (error: Error) => {
+        resolve(NextResponse.json(
+          { 
+            success: false,
+            error: `Failed to start Python process: ${error.message}`,
+            details: error.stack
+          },
+          { status: 500 }
+        ));
+      });
     });
   } catch (error: any) {
     console.error('Error updating tags:', error);
@@ -54,25 +109,30 @@ export async function POST(request: NextRequest) {
 }
 
 function getTagCategory(tagName: string): string {
+  // Map tag names to their solution folders (new structure)
   const categoryMap: Record<string, string> = {
-    '3E_Analytics Tracking': 'analytics',
-    '3E_Page Activity': 'analytics',
-    '3E_Form Validation': 'forms',
-    '3E_RFI Submit': 'forms',
-    '3E_3EI Recruiter Activity': 'tracking',
-    '3E_3EI Recruiter Conversion': 'tracking',
-    '3E_3EI Recruiter Tracking': 'tracking',
-    '3E_3EI Recruiter Unified': 'tracking',
-    '3E_Insights Pixel': 'tracking',
-    '3E_Pop-up Tracking': 'tracking',
-    '3E_Favicon Injection': 'ui',
-    '3E_Pop-up': 'ui',
-    '3E_Pop-up Marketo Form': 'ui',
-    '3E_Sticky Buttons': 'ui',
-    '3E_Cloudflare Beacon': 'integrations',
+    // Base Solutions
+    'Template - 3E Config': 'base-solutions',
+    '3E_Analytics Tracking': 'base-solutions',
+    '3E_Page Activity': 'base-solutions',
+    '3E_Form Validation': 'base-solutions',
+    '3E_RFI Submit': 'base-solutions',
+    '3E_Favicon Injection': 'base-solutions',
+    '3E_Sticky Buttons': 'base-solutions',
+    '3E_Cloudflare Beacon': 'base-solutions',
+    // Chatbot Solutions
+    '3E_3EI Recruiter Activity': 'chatbot-solutions',
+    '3E_3EI Recruiter Conversion': 'chatbot-solutions',
+    '3E_3EI Recruiter Tracking': 'chatbot-solutions',
+    '3E_3EI Recruiter Unified': 'chatbot-solutions',
+    '3E_Insights Pixel': 'chatbot-solutions',
+    // Pop-up Solutions
+    '3E_Pop-up': 'pop-up-solutions',
+    '3E_Pop-up Marketo Form': 'pop-up-solutions',
+    '3E_Pop-up Tracking': 'pop-up-solutions',
   };
   
-  return categoryMap[tagName] || 'ui';
+  return categoryMap[tagName] || 'base-solutions';
 }
 
 function parseUpdateOutput(output: string): any {
