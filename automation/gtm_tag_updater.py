@@ -895,7 +895,51 @@ class GTMTagUpdater:
                 # Re-raise to preserve existing error handling
                 raise
         except HttpError as e:
-            if e.resp.status == 403:
+            # Parse error content as JSON if possible
+            error_code = None
+            error_message = None
+            error_status = None
+            error_reasons = []
+            
+            try:
+                # Try to parse error content as JSON
+                if hasattr(e, "content") and e.content:
+                    error_content = e.content.decode("utf-8") if isinstance(e.content, (bytes, bytearray)) else str(e.content)
+                    try:
+                        error_json = json.loads(error_content)
+                        error_code = error_json.get("error", {}).get("code")
+                        error_message = error_json.get("error", {}).get("message")
+                        error_status = error_json.get("error", {}).get("status")
+                        error_reasons = [err.get("reason", "") for err in error_json.get("error", {}).get("errors", [])]
+                    except (json.JSONDecodeError, AttributeError):
+                        # If JSON parsing fails, fall back to string parsing
+                        pass
+            except Exception:
+                pass
+            
+            # Use HTTP status code if JSON parsing didn't provide status
+            http_status = e.resp.status if hasattr(e, 'resp') and hasattr(e.resp, 'status') else error_status
+            if not error_status:
+                error_status = http_status
+            if not error_code:
+                error_code = http_status
+            
+            # Handle "Workspace is already submitted" case (400 error)
+            if http_status == 400 and error_message and "Workspace is already submitted" in error_message:
+                print(f"[GTM DEBUG] Workspace is already submitted; treating create_version as a no-op for this workspace.", flush=True)
+                # Return None to indicate no version was created, but don't treat as failure
+                # The calling code should handle None gracefully
+                return None
+            
+            # Only show "Permission denied" for actual permission errors
+            is_permission_error = (
+                http_status == 403 or 
+                error_code == 403 or 
+                "insufficientPermissions" in error_reasons or
+                (error_message and ("insufficient authentication scopes" in error_message.lower() or "insufficient permission" in error_message.lower()))
+            )
+            
+            if is_permission_error:
                 error_msg = str(e)
                 error_details = e.error_details if hasattr(e, 'error_details') else []
                 
@@ -909,7 +953,7 @@ class GTMTagUpdater:
                     print(f"    3. Click 'ENABLE' button")
                     print(f"    4. Wait for API to enable (may take 1-2 minutes)")
                     print(f"    5. Try the update again")
-                elif 'insufficient authentication scopes' in error_msg.lower() or 'insufficient permission' in error_msg.lower():
+                else:
                     print(f"ERROR: Permission denied when creating version")
                     print(f"  OAuth scopes are correct and API is enabled, but GTM is rejecting the request.")
                     print(f"")
@@ -972,11 +1016,12 @@ class GTMTagUpdater:
                     print(f"  Required scopes: {self.SCOPES}")
                     print(f"")
                     print(f"  Full error details: {error_details}")
-                else:
-                    print(f"ERROR: Permission denied when creating version: {e}")
-                    print(f"  Error details: {error_details}")
             else:
-                print(f"ERROR: Failed to create version: {e}")
+                # For non-permission errors, show accurate error message without claiming it's a permission error
+                error_msg_display = error_message if error_message else str(e)
+                print(f"ERROR: Failed to create version (HTTP {error_code}, status {error_status}): {error_msg_display}")
+                if error_reasons:
+                    print(f"  Error reasons: {', '.join(error_reasons)}")
             return None
     
     def publish_version(self, container_id: str, version_id: str, account_id: Optional[str] = None) -> bool:
