@@ -43,16 +43,15 @@ See [QUICK_START.md](QUICK_START.md) for more details.
 ```
 eee-tag-management/
 ├── tags/                    # Standard GTM tags for client deployment
-│   ├── analytics/          # Analytics and tracking tags
-│   ├── forms/              # Form validation and submission tags
-│   ├── tracking/           # Event tracking and conversion tags
-│   ├── ui/                 # UI enhancement tags (popups, buttons, etc.)
-│   ├── integrations/        # Third-party integration tags
-│   └── templates/          # GTM variable templates
+│   ├── base-solutions/     # Core functionality tags
+│   ├── pop-up-solutions/   # Pop-up related tags
+│   └── chatbot-solutions/  # Chatbot integration tags
 │
 ├── automation/              # API tools for tag management
 │   ├── gtm_tag_updater.py  # Main automation script
-│   └── requirements-gtm.txt # Python dependencies
+│   ├── gtm_rate_limiter.py # Rate limiting utility
+│   ├── requirements-gtm.txt # Python dependencies
+│   └── *.md                # Automation documentation
 │
 ├── web/                     # Web interface (Next.js)
 │   ├── app/                # Next.js app directory
@@ -62,7 +61,9 @@ eee-tag-management/
 └── docs/                   # Documentation
     ├── GTM_TAG_UPDATER_SETUP.md
     ├── GTM_TAG_UPDATER_QUICKSTART.md
-    └── GIT_SETUP.md
+    ├── GIT_SETUP.md
+    ├── GTM_API_DEBUG_SUMMARY.md
+    └── archive/            # Archived/outdated docs
 ```
 
 ## Quick Links

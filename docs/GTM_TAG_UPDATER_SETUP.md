@@ -11,7 +11,7 @@ This guide explains how to set up and use the GTM Tag Updater script to automati
 ## Step 1: Install Python Dependencies
 
 ```bash
-cd "Tag Manager"
+cd automation
 pip install -r requirements-gtm.txt
 ```
 
@@ -99,21 +99,26 @@ Ensure your updated script file is ready. The script will read the entire conten
 
 Example file structure:
 ```
-Tag Manager/
-  Deployed/
-    3E_Pop-up
-    3E_Form Validation
-    ...
-  gtm_tag_updater.py
-  requirements-gtm.txt
+eee-tag-management/
+  automation/
+    gtm_tag_updater.py
+    requirements-gtm.txt
+    gtm-oauth-credentials.json
+  tags/
+    base-solutions/
+      3E_Form Validation
+      ...
+    pop-up-solutions/
+      3E_Pop-up
+      ...
 ```
 
 ## Step 6: Run the Script
 
-Run the script from the Tag Manager folder:
+Run the script from the automation folder:
 
 ```bash
-cd "Tag Manager"
+cd automation
 ```
 
 ### Basic Usage
@@ -121,9 +126,9 @@ cd "Tag Manager"
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "gtm-service-account.json"
+  --credentials "gtm-oauth-credentials.json"
 ```
 
 ### Dry Run (Test Without Making Changes)
@@ -131,9 +136,9 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "gtm-service-account.json" \
+  --credentials "gtm-oauth-credentials.json" \
   --dry-run
 ```
 
@@ -142,9 +147,9 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "gtm-service-account.json" \
+  --credentials "gtm-oauth-credentials.json" \
   --containers "GTM-XXXXX,GTM-YYYYY"
 ```
 
@@ -153,9 +158,9 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "gtm-service-account.json" \
+  --credentials "gtm-oauth-credentials.json" \
   --no-publish
 ```
 
@@ -164,7 +169,7 @@ python gtm_tag_updater.py \
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--tag-name` | Yes | Name of the tag to update (must match exactly) |
-| `--script-file` | Yes | Path to the updated script file (relative to Tag Manager folder, e.g., "Deployed/3E_Pop-up") |
+| `--script-file` | Yes | Path to the updated script file (relative to automation folder, e.g., "../tags/pop-up-solutions/3E_Pop-up") |
 | `--account-id` | Yes | GTM Account ID (numeric) |
 | `--credentials` | Yes | Path to service account JSON or OAuth credentials |
 | `--containers` | No | Comma-separated list of container IDs (e.g., "GTM-XXXXX,GTM-YYYYY"). If omitted, updates all containers. |
@@ -245,7 +250,7 @@ python gtm_tag_updater.py \
 
 ## Example Workflow
 
-1. **Update script locally**: Make changes to your tag script file in `Deployed/`
+1. **Update script locally**: Make changes to your tag script file in `tags/` directory
 2. **Test in one container**: Use `--containers` to test on a single container first
 3. **Dry run**: Use `--dry-run` to verify what will be updated
 4. **Update all**: Run without `--containers` to update all containers

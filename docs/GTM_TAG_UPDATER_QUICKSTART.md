@@ -20,9 +20,9 @@ To push an updated script to all GTM containers that have a specific tag, you ne
 
 ## Quick Setup Steps
 
-1. **Navigate to Tag Manager folder:**
+1. **Navigate to automation folder:**
    ```bash
-   cd "Tag Manager"
+   cd automation
    ```
 
 2. **Install dependencies:**
@@ -30,7 +30,7 @@ To push an updated script to all GTM containers that have a specific tag, you ne
    pip install -r requirements-gtm.txt
    ```
 
-3. **Set up Google Cloud credentials** (see `GTM_TAG_UPDATER_SETUP.md` for details)
+3. **Set up Google Cloud credentials** (see [OAuth Setup Guide](../automation/OAUTH_SETUP.md) or [Detailed Setup Guide](GTM_TAG_UPDATER_SETUP.md))
 
 4. **Get your GTM Account ID:**
    - Go to GTM → Your Account
@@ -41,9 +41,9 @@ To push an updated script to all GTM containers that have a specific tag, you ne
    ```bash
    python gtm_tag_updater.py \
      --tag-name "3E_Pop-up" \
-     --script-file "Deployed/3E_Pop-up" \
+     --script-file "../tags/pop-up-solutions/3E_Pop-up" \
      --account-id "YOUR_ACCOUNT_ID" \
-     --credentials "path/to/credentials.json" \
+     --credentials "gtm-oauth-credentials.json" \
      --dry-run  # Remove this to actually update
    ```
 
@@ -61,9 +61,9 @@ To push an updated script to all GTM containers that have a specific tag, you ne
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "credentials.json" \
+  --credentials "gtm-oauth-credentials.json" \
   --containers "GTM-XXXXX"
 ```
 
@@ -71,18 +71,18 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "credentials.json"
+  --credentials "gtm-oauth-credentials.json"
 ```
 
 ### Update Without Publishing (Testing)
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "Deployed/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "credentials.json" \
+  --credentials "gtm-oauth-credentials.json" \
   --no-publish
 ```
 
@@ -92,15 +92,21 @@ python gtm_tag_updater.py \
 - **Tag Type**: Currently designed for Custom HTML tags
 - **Workspace**: Uses the default workspace in each container
 - **Dry Run**: Always test with `--dry-run` first!
-- **Script File Path**: Use relative paths from the Tag Manager folder (e.g., `"Deployed/3E_Pop-up"`)
+- **Script File Path**: Use relative paths from the automation folder (e.g., `"../tags/pop-up-solutions/3E_Pop-up"`)
 
-## Files in Tag Manager Folder
+## Files in Automation Folder
 
 - `gtm_tag_updater.py` - Main script
-- `GTM_TAG_UPDATER_SETUP.md` - Detailed setup guide
-- `GTM_TAG_UPDATER_QUICKSTART.md` - This file
 - `requirements-gtm.txt` - Python dependencies
-- `Deployed/` - Folder containing your tag scripts
+- `gtm-oauth-credentials.json` - OAuth credentials (create this)
+- `token.json` - OAuth token (created automatically)
 
-For detailed setup instructions, see `GTM_TAG_UPDATER_SETUP.md`.
+## Tag Files
+
+Tag scripts are located in the `../tags/` directory, organized by solution type:
+- `tags/base-solutions/` - Core functionality tags
+- `tags/pop-up-solutions/` - Pop-up related tags
+- `tags/chatbot-solutions/` - Chatbot integration tags
+
+For detailed setup instructions, see [GTM_TAG_UPDATER_SETUP.md](GTM_TAG_UPDATER_SETUP.md) or [OAuth Setup Guide](../automation/OAUTH_SETUP.md).
 
