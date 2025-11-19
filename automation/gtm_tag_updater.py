@@ -866,20 +866,25 @@ class GTMTagUpdater:
             # path format: accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}
             full_path = f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
             
-            # Request body must be empty JSON object for OAuth user accounts
-            request_body = {}
+            # Build version body with name and notes
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            version_body = {
+                "name": f"Tag Update - {tag_name}" if tag_name else "Tag Update",
+                "notes": f"Automated update for tag '{tag_name}' at {timestamp}" if tag_name else f"Automated update at {timestamp}"
+            }
             
             # Log the request details
             print(f"[GTM DEBUG] Creating version:", flush=True)
             print(f"[GTM DEBUG]   full_path: {full_path}", flush=True)
             print(f"[GTM DEBUG]   HTTP POST", flush=True)
-            print(f"[GTM DEBUG]   body = {request_body}", flush=True)
+            print(f"[GTM DEBUG]   body = {version_body}", flush=True)
             
             try:
                 response = self._api_call_with_retry(
                     self.service.accounts().containers().workspaces().create_version(
                         path=full_path,
-                        body=request_body
+                        body=version_body
                     )
                 )
                 if response:
@@ -896,10 +901,13 @@ class GTMTagUpdater:
                 raise
         except HttpError as e:
             # Parse error content as JSON if possible
-            error_code = None
+            http_code = None
             error_message = None
             error_status = None
             error_reasons = []
+            
+            # Get HTTP status code from response
+            http_code = e.resp.status if hasattr(e, 'resp') and hasattr(e.resp, 'status') else None
             
             try:
                 # Try to parse error content as JSON
@@ -907,10 +915,12 @@ class GTMTagUpdater:
                     error_content = e.content.decode("utf-8") if isinstance(e.content, (bytes, bytearray)) else str(e.content)
                     try:
                         error_json = json.loads(error_content)
-                        error_code = error_json.get("error", {}).get("code")
-                        error_message = error_json.get("error", {}).get("message")
-                        error_status = error_json.get("error", {}).get("status")
-                        error_reasons = [err.get("reason", "") for err in error_json.get("error", {}).get("errors", [])]
+                        error_obj = error_json.get("error", {})
+                        error_message = error_obj.get("message")
+                        error_status = error_obj.get("status")
+                        errors_list = error_obj.get("errors", [])
+                        if errors_list and len(errors_list) > 0:
+                            error_reasons = [err.get("reason", "") for err in errors_list]
                     except (json.JSONDecodeError, AttributeError):
                         # If JSON parsing fails, fall back to string parsing
                         pass
@@ -918,23 +928,18 @@ class GTMTagUpdater:
                 pass
             
             # Use HTTP status code if JSON parsing didn't provide status
-            http_status = e.resp.status if hasattr(e, 'resp') and hasattr(e.resp, 'status') else error_status
             if not error_status:
-                error_status = http_status
-            if not error_code:
-                error_code = http_status
+                error_status = http_code
             
             # Handle "Workspace is already submitted" case (400 error)
-            if http_status == 400 and error_message and "Workspace is already submitted" in error_message:
+            if http_code == 400 and error_message and "Workspace is already submitted" in error_message:
                 print(f"[GTM DEBUG] Workspace is already submitted; treating create_version as a no-op for this workspace.", flush=True)
-                # Return None to indicate no version was created, but don't treat as failure
-                # The calling code should handle None gracefully
-                return None
+                # Return special sentinel value to indicate soft success (version already exists)
+                return "ALREADY_SUBMITTED"
             
             # Only show "Permission denied" for actual permission errors
             is_permission_error = (
-                http_status == 403 or 
-                error_code == 403 or 
+                http_code == 403 or 
                 "insufficientPermissions" in error_reasons or
                 (error_message and ("insufficient authentication scopes" in error_message.lower() or "insufficient permission" in error_message.lower()))
             )
@@ -1019,7 +1024,7 @@ class GTMTagUpdater:
             else:
                 # For non-permission errors, show accurate error message without claiming it's a permission error
                 error_msg_display = error_message if error_message else str(e)
-                print(f"ERROR: Failed to create version (HTTP {error_code}, status {error_status}): {error_msg_display}")
+                print(f"ERROR: Failed to create version (HTTP {http_code}, status {error_status}): {error_msg_display}")
                 if error_reasons:
                     print(f"  Error reasons: {', '.join(error_reasons)}")
             return None
@@ -1154,6 +1159,17 @@ class GTMTagUpdater:
         except Exception:
             return None
     
+    def extract_html_from_tag(self, tag: Dict) -> Optional[str]:
+        """Extract HTML content from tag."""
+        try:
+            parameters = tag.get('parameter', [])
+            for param in parameters:
+                if param.get('key') == 'html':
+                    return param.get('value', '')
+            return None
+        except Exception:
+            return None
+    
     def find_tag_in_container(
         self, 
         container_id: str, 
@@ -1267,7 +1283,14 @@ class GTMTagUpdater:
             if publish:
                 # Create version from the new workspace (include tag name for better traceability)
                 version_id = self.create_version(container_id, workspace_id, account_id=target_account_id, tag_name=tag_name)
-                if not version_id:
+                
+                # Handle "Workspace is already submitted" as soft success
+                if version_id == "ALREADY_SUBMITTED":
+                    print(f"  ✓ Workspace already submitted (version already exists)")
+                    # Workspace is already submitted, so version exists - treat as success
+                    # Workspace will be automatically cleaned up by GTM
+                    workspace_id = None
+                elif not version_id:
                     print(f"  ❌ Failed to create version")
                     # Check if it's a permission error and provide detailed help
                     try:
@@ -1288,31 +1311,31 @@ class GTMTagUpdater:
                     except Exception as e:
                         print(f"  ⚠️  Could not check token scopes: {e}")
                     return False
-                
-                print(f"  ✓ Created version: {version_id}")
-                
-                # Publish version (workspace will be automatically removed after publishing)
-                if not self.publish_version(container_id, version_id, account_id=target_account_id):
-                    print(f"  ❌ Failed to publish version")
-                    # Check if it's a permission error
-                    try:
-                        # Try to get workspace to see if we have access
-                        workspace = self._api_call_with_retry(
-                            self.service.accounts().containers().workspaces().get(
-                                path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                else:
+                    print(f"  ✓ Created version: {version_id}")
+                    
+                    # Publish version (workspace will be automatically removed after publishing)
+                    if not self.publish_version(container_id, version_id, account_id=target_account_id):
+                        print(f"  ❌ Failed to publish version")
+                        # Check if it's a permission error
+                        try:
+                            # Try to get workspace to see if we have access
+                            workspace = self._api_call_with_retry(
+                                self.service.accounts().containers().workspaces().get(
+                                    path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                                )
                             )
-                        )
-                        if workspace:
-                            print(f"  ⚠️  Permission error: OAuth token missing required scopes")
-                            print(f"  ⚠️  Required scopes: {', '.join(self.SCOPES)}")
-                            print(f"  ⚠️  Please delete token.json and re-authenticate")
-                    except:
-                        pass
-                    return False
-                
-                print(f"  ✓ Version published successfully (workspace automatically removed)")
-                # Workspace is automatically deleted by GTM after publishing, so clear our reference
-                workspace_id = None
+                            if workspace:
+                                print(f"  ⚠️  Permission error: OAuth token missing required scopes")
+                                print(f"  ⚠️  Required scopes: {', '.join(self.SCOPES)}")
+                                print(f"  ⚠️  Please delete token.json and re-authenticate")
+                        except:
+                            pass
+                        return False
+                    
+                    print(f"  ✓ Version published successfully (workspace automatically removed)")
+                    # Workspace is automatically deleted by GTM after publishing, so clear our reference
+                    workspace_id = None
             else:
                 # If not publishing, we need to manually delete the workspace
                 # (though this shouldn't happen in normal operation)
@@ -1455,14 +1478,25 @@ Examples:
         help='Show detailed information including all tags found in containers'
     )
     
+    parser.add_argument(
+        '--verify',
+        action='store_true',
+        help='Verify mode: locate tag, fetch it, and print tag info without making changes'
+    )
+    
     args = parser.parse_args()
     
     # Validate arguments
     if args.containers_only:
         # Containers-only mode doesn't need tag-name or script-file
         pass
+    elif args.verify:
+        # Verify mode requires tag-name but not script-file
+        if not args.tag_name:
+            print("ERROR: --tag-name is required when using --verify mode")
+            sys.exit(1)
     elif not args.list_only and not args.script_file:
-        print("ERROR: --script-file is required unless using --list-only or --containers-only mode")
+        print("ERROR: --script-file is required unless using --list-only, --containers-only, or --verify mode")
         sys.exit(1)
     elif args.list_only and not args.tag_name:
         print("ERROR: --tag-name is required when using --list-only mode")
@@ -1471,9 +1505,9 @@ Examples:
         print("ERROR: --tag-name is required for update mode")
         sys.exit(1)
     
-    # If list-only or containers-only mode, script file is optional
+    # If list-only, containers-only, or verify mode, script file is optional
     script_content = None
-    if not args.list_only and not args.containers_only:
+    if not args.list_only and not args.containers_only and not args.verify:
         # Read script content - handle relative paths from Tag Manager folder
         if not args.script_file:
             print("ERROR: --script-file is required for update mode")
@@ -1582,6 +1616,73 @@ Examples:
                 not_found_count += 1
             else:
                 # Error occurred
+                error_count += 1
+        
+        # Summary
+        print(f"\n{'='*60}")
+        print(f"Summary:")
+        print(f"  ✓ Found: {found_count}")
+        print(f"  ⚠️  Not Found: {not_found_count}")
+        print(f"  ❌ Errors: {error_count}")
+        print(f"{'='*60}")
+        
+        if error_count > 0:
+            sys.exit(1)
+    elif args.verify:
+        # Verify mode: locate tag, fetch it, and print info without making changes
+        print(f"\n[VERIFY MODE] Verifying tag '{args.tag_name}' in {len(container_ids)} container(s)...")
+        print("⚠️  VERIFY MODE: Only locating and displaying tag info, no changes will be made.\n")
+        
+        found_count = 0
+        not_found_count = 0
+        error_count = 0
+        total_containers = len(container_ids)
+        
+        for idx, container_id in enumerate(container_ids, 1):
+            print(f"\n[{idx}/{total_containers}] Processing container: {container_id}")
+            
+            # Get account_id for this container if we have container objects
+            container_account_id = None
+            if containers:
+                container_obj = next((c for c in containers if c.get('containerId') == container_id), None)
+                if container_obj:
+                    container_account_id = container_obj.get('accountId')
+            
+            try:
+                # Get default workspace (read-only, no new workspace created)
+                workspace_id = updater.get_workspace(container_id, account_id=container_account_id)
+                if not workspace_id:
+                    print(f"  ❌ Could not get workspace for {container_id}")
+                    error_count += 1
+                    continue
+                
+                # Find tag in default workspace (read-only)
+                tag = updater.find_tag(container_id, workspace_id, args.tag_name, account_id=container_account_id)
+                if not tag:
+                    print(f"  ⚠️  Tag '{args.tag_name}' not found in {container_id}")
+                    not_found_count += 1
+                    continue
+                
+                # Extract tag info
+                tag_id = tag.get('tagId', 'Unknown')
+                html_content = updater.extract_html_from_tag(tag)
+                
+                # Print tag info
+                print(f"  ✓ Tag found")
+                print(f"  Tag ID: {tag_id}")
+                if html_content:
+                    html_preview = html_content[:300]
+                    print(f"  First 300 characters of HTML:")
+                    print(f"  {html_preview}")
+                    if len(html_content) > 300:
+                        print(f"  ... (truncated, total length: {len(html_content)} characters)")
+                else:
+                    print(f"  HTML content: Not available (tag may not have HTML parameter)")
+                
+                found_count += 1
+                
+            except Exception as e:
+                print(f"  ❌ Error processing container {container_id}: {e}")
                 error_count += 1
         
         # Summary
