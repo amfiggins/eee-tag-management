@@ -77,6 +77,7 @@ class GTMTagUpdater:
         'openid',
         'https://www.googleapis.com/auth/tagmanager.edit.containers',
         'https://www.googleapis.com/auth/tagmanager.publish',
+        'https://www.googleapis.com/auth/tagmanager.edit.containerversions',
         'https://www.googleapis.com/auth/userinfo.email',
         'https://www.googleapis.com/auth/tagmanager.manage.users'
     ]
@@ -871,18 +872,28 @@ class GTMTagUpdater:
                 version_name = f"Tag Update - {timestamp}"
                 version_notes = f"Automated tag update via API"
             
-            version = self._api_call_with_retry(
-                self.service.accounts().containers().workspaces().create_version(
-                    path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}',
-                    body={
-                        'name': version_name,
-                        'notes': version_notes
-                    }
+            workspace_path = f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+            version_options_body = {
+                'name': version_name,
+                'notes': version_notes
+            }
+            
+            try:
+                response = self._api_call_with_retry(
+                    self.service.accounts().containers().workspaces().create_version(
+                        path=workspace_path,
+                        body=version_options_body,
+                    )
                 )
-            )
-            if version:
-                return version.get('containerVersionId')
-            return None
+                if response:
+                    return response.get('containerVersionId')
+                return None
+            except HttpError as e:
+                # Log the full HTTP error details
+                error_content = e.content.decode("utf-8") if hasattr(e, "content") and isinstance(e.content, (bytes, bytearray)) else str(e)
+                print(f"[GTM DEBUG] RAW create_version HttpError: {error_content}", flush=True)
+                # Re-raise to preserve existing error handling
+                raise
         except HttpError as e:
             if e.resp.status == 403:
                 error_msg = str(e)
