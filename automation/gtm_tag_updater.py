@@ -94,6 +94,13 @@ class GTMTagUpdater:
         self.credentials_path = credentials_path  # Store for later use in error messages
         self.rate_limiter = GTMRateLimiter()  # Use proper rate limiter
         self.service = self._build_service(credentials_path)
+        
+        # Debug: Print user permissions (called after service is built, before email is overwritten)
+        try:
+            self.debug_print_user_permissions()
+        except Exception as e:
+            print(f"[GTM DEBUG] Error while printing user permissions: {e}", flush=True)
+        
         self._authenticated_user_email = None  # Cache the authenticated user email
     
     def _api_call_with_retry(self, api_call, max_retries: int = 3):
@@ -131,6 +138,44 @@ class GTMTagUpdater:
                 else:
                     raise
         return None
+    
+    def debug_print_user_permissions(self):
+        """Debug helper to print user permissions for the authenticated user."""
+        try:
+            permissions_response = self._api_call_with_retry(
+                self.service.accounts().user_permissions().list(
+                    parent=f"accounts/{self.account_id}"
+                )
+            )
+        except HttpError as e:
+            print(f"[GTM DEBUG] Failed to list user permissions: {e}", flush=True)
+            return
+        
+        if not permissions_response:
+            return
+        
+        user_permissions = permissions_response.get("userPermission", [])
+        if not user_permissions:
+            return
+        
+        authenticated_email = getattr(self, "_authenticated_user_email", None)
+        if not authenticated_email:
+            return
+        
+        for perm in user_permissions:
+            email = perm.get("emailAddress")
+            if email == authenticated_email:
+                account_access = perm.get("accountAccess", {})
+                container_access_list = perm.get("containerAccess", [])
+                
+                print(f"[GTM DEBUG] User permissions for {email}:", flush=True)
+                print(f"[GTM DEBUG]   Account access: {account_access}", flush=True)
+                
+                for container_access in container_access_list:
+                    container_id = container_access.get("containerId", "Unknown")
+                    permission = container_access.get("permission", "Unknown")
+                    print(f"[GTM DEBUG]   Container {container_id}: {permission}", flush=True)
+                break
         
     def _build_service(self, credentials_path: str):
         """Build and return GTM API service."""
