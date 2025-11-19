@@ -77,7 +77,8 @@ class GTMTagUpdater:
         'openid',
         'https://www.googleapis.com/auth/tagmanager.edit.containers',
         'https://www.googleapis.com/auth/tagmanager.publish',
-        'https://www.googleapis.com/auth/userinfo.email'
+        'https://www.googleapis.com/auth/userinfo.email',
+        'https://www.googleapis.com/auth/tagmanager.manage.users'
     ]
     
     def __init__(self, credentials_path: str, account_id: str, delay: float = None):
