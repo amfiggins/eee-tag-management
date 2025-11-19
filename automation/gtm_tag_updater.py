@@ -861,32 +861,32 @@ class GTMTagUpdater:
             # Note: We skip the API test here since it's already done during service initialization
             # If we got this far, the API is accessible for read operations
             
-            # Now try to create the version with name and description
-            # GTM requires version name and notes (description) when creating a version
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            if tag_name:
-                version_name = f"Tag Update - {tag_name} - {timestamp}"
-                version_notes = f"Automated update of tag: {tag_name}"
-            else:
-                version_name = f"Tag Update - {timestamp}"
-                version_notes = f"Automated tag update via API"
+            # Build the path for create_version endpoint
+            # POST https://tagmanager.googleapis.com/tagmanager/v2/{path}:create_version
+            # path format: accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}
+            full_path = f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
             
-            workspace_path = f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
-            version_options_body = {
-                'name': version_name,
-                'notes': version_notes
-            }
+            # Request body must be empty JSON object for OAuth user accounts
+            request_body = {}
+            
+            # Log the request details
+            print(f"[GTM DEBUG] Creating version:", flush=True)
+            print(f"[GTM DEBUG]   full_path: {full_path}", flush=True)
+            print(f"[GTM DEBUG]   HTTP POST", flush=True)
+            print(f"[GTM DEBUG]   body = {request_body}", flush=True)
             
             try:
                 response = self._api_call_with_retry(
                     self.service.accounts().containers().workspaces().create_version(
-                        path=workspace_path,
-                        body=version_options_body,
+                        path=full_path,
+                        body=request_body
                     )
                 )
                 if response:
-                    return response.get('containerVersionId')
+                    version_id = response.get('containerVersionId')
+                    if version_id:
+                        print(f"[GTM DEBUG] Version created successfully: {version_id}", flush=True)
+                    return version_id
                 return None
             except HttpError as e:
                 # Log the full HTTP error details
