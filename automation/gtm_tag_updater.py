@@ -4,8 +4,8 @@ GTM Tag Updater Script
 Updates a specific tag across multiple Google Tag Manager containers.
 
     Author: Anthony Figgins
-    Version: 1.0.8
-    Date Updated: 2025-11-17
+    Version: 1.1.0
+    Date Updated: 2025-11-18
 
 Requirements:
 - Google Cloud Project with GTM API enabled
@@ -73,7 +73,12 @@ except ImportError:
 class GTMTagUpdater:
     """Manages GTM tag updates across multiple containers."""
     
-    SCOPES = ['https://www.googleapis.com/auth/tagmanager.edit.containers']
+    SCOPES = [
+        'openid',
+        'https://www.googleapis.com/auth/tagmanager.edit.containers',
+        'https://www.googleapis.com/auth/tagmanager.publish',
+        'https://www.googleapis.com/auth/userinfo.email'
+    ]
     
     def __init__(self, credentials_path: str, account_id: str, delay: float = None):
         """
@@ -86,8 +91,10 @@ class GTMTagUpdater:
                    Kept for backward compatibility but ignored
         """
         self.account_id = account_id
+        self.credentials_path = credentials_path  # Store for later use in error messages
         self.rate_limiter = GTMRateLimiter()  # Use proper rate limiter
         self.service = self._build_service(credentials_path)
+        self._authenticated_user_email = None  # Cache the authenticated user email
     
     def _api_call_with_retry(self, api_call, max_retries: int = 3):
         """
@@ -156,8 +163,26 @@ class GTMTagUpdater:
                 if os.path.exists(token_file):
                     print(f"[DEBUG] Found existing token file", flush=True)
                     from google.oauth2.credentials import Credentials as OAuthCredentials
-                    credentials = OAuthCredentials.from_authorized_user_file(token_file, self.SCOPES)
-                    print(f"[DEBUG] Loaded credentials from token file, valid: {credentials.valid if credentials else 'None'}", flush=True)
+                    try:
+                        credentials = OAuthCredentials.from_authorized_user_file(token_file, self.SCOPES)
+                        print(f"[DEBUG] Loaded credentials from token file, valid: {credentials.valid if credentials else 'None'}", flush=True)
+                        
+                        # Check if token has all required scopes
+                        if credentials and credentials.scopes:
+                            required_scopes = set(self.SCOPES)
+                            token_scopes = set(credentials.scopes)
+                            if not required_scopes.issubset(token_scopes):
+                                print(f"[DEBUG] Token missing required scopes. Required: {self.SCOPES}, Token has: {list(token_scopes)}", flush=True)
+                                print(f"[DEBUG] Deleting old token file to force re-authentication with new scopes", flush=True)
+                                try:
+                                    os.remove(token_file)
+                                    print(f"[DEBUG] Old token file deleted", flush=True)
+                                except Exception as e:
+                                    print(f"[DEBUG] Warning: Could not delete token file: {e}", flush=True)
+                                credentials = None  # Force re-authentication
+                    except Exception as e:
+                        print(f"[DEBUG] Error loading token file: {e}, will re-authenticate", flush=True)
+                        credentials = None
                 else:
                     print(f"[DEBUG] No token file found at {token_file}", flush=True)
                 
@@ -165,11 +190,17 @@ class GTMTagUpdater:
                 if not credentials or not credentials.valid:
                     if credentials and credentials.expired and credentials.refresh_token:
                         print(f"[DEBUG] Token expired, attempting refresh...", flush=True)
-                        credentials.refresh(Request())
-                        print(f"[DEBUG] Token refreshed successfully", flush=True)
-                    else:
+                        try:
+                            credentials.refresh(Request())
+                            print(f"[DEBUG] Token refreshed successfully", flush=True)
+                        except Exception as e:
+                            print(f"[DEBUG] Token refresh failed: {e}, will re-authenticate", flush=True)
+                            credentials = None
+                    
+                    if not credentials or not credentials.valid:
                         print(f"[DEBUG] No valid credentials, starting OAuth flow...", flush=True)
                         print(f"[DEBUG] WARNING: This will try to open a browser. In headless environments, this will hang!", flush=True)
+                        print(f"[DEBUG] Requesting scopes: {self.SCOPES}", flush=True)
                         flow = InstalledAppFlow.from_client_secrets_file(
                             credentials_path, self.SCOPES
                         )
@@ -182,15 +213,160 @@ class GTMTagUpdater:
                     with open(token_file, 'w') as token:
                         token.write(credentials.to_json())
                     print(f"[DEBUG] Token saved successfully", flush=True)
+                    print(f"[DEBUG] Token scopes: {credentials.scopes}", flush=True)
+                    print(f"[DEBUG] Required scopes: {self.SCOPES}", flush=True)
+                    if credentials.scopes:
+                        token_scopes_set = set(credentials.scopes)
+                        required_scopes_set = set(self.SCOPES)
+                        missing_scopes = required_scopes_set - token_scopes_set
+                        if missing_scopes:
+                            print(f"[DEBUG] WARNING: Token is missing scopes: {list(missing_scopes)}", flush=True)
+                        else:
+                            print(f"[DEBUG] ✓ Token has all required scopes", flush=True)
         
         except (ValueError, FileNotFoundError, json.JSONDecodeError) as e:
             print(f"[DEBUG] Error loading credentials: {e}", flush=True)
             raise ValueError(f"Failed to load credentials from {credentials_path}: {e}")
         
+        # Log authentication identity and scopes before building service
+        # Detect credential type and log appropriate information
+        from google.oauth2.credentials import Credentials as OAuthCredentials
+        
+        authenticated_email = None
+        if isinstance(credentials, service_account.Credentials):
+            # Service account credentials
+            authenticated_email = credentials.service_account_email
+            print(f"[GTM DEBUG] Authenticated as service account: {authenticated_email}", flush=True)
+        elif isinstance(credentials, OAuthCredentials):
+            # User OAuth credentials - fetch email using OAuth2 v2 API
+            try:
+                oauth2_service = build("oauth2", "v2", credentials=credentials)
+                userinfo = oauth2_service.userinfo().get().execute()
+                email = userinfo.get("email")
+                authenticated_email = email
+                print(f"[GTM DEBUG] Authenticated as OAuth user: {email}", flush=True)
+            except Exception as e:
+                print(f"[GTM DEBUG] Failed to fetch userinfo email: {e}", flush=True)
+        else:
+            # Unknown credential type
+            print(f"[GTM DEBUG] Unknown credential type: {type(credentials).__name__}", flush=True)
+        
+        # Log scopes in all cases
+        if hasattr(credentials, 'scopes') and credentials.scopes:
+            print(f"[GTM DEBUG] Active scopes: {credentials.scopes}", flush=True)
+        else:
+            print(f"[GTM DEBUG] Active scopes: Not available", flush=True)
+        
         print(f"[DEBUG] Building GTM API service...", flush=True)
         service = build('tagmanager', 'v2', credentials=credentials)
         print(f"[DEBUG] Service built successfully", flush=True)
+        
+        # Store authenticated email for later use
+        self._authenticated_user_email = authenticated_email
+        
+        # Identify the authenticated identity
+        try:
+            if hasattr(credentials, 'service_account_email'):
+                # Service account
+                identity_email = credentials.service_account_email
+                identity_type = "Service Account"
+                print(f"[DEBUG] Authenticated as: {identity_type} - {identity_email}", flush=True)
+            elif hasattr(credentials, 'token') and hasattr(credentials, 'id_token'):
+                # Try to decode the ID token to get email
+                try:
+                    import base64
+                    import json as json_module
+                    # Decode JWT token (format: header.payload.signature)
+                    if credentials.id_token:
+                        parts = credentials.id_token.split('.')
+                        if len(parts) >= 2:
+                            # Decode payload (add padding if needed)
+                            payload = parts[1]
+                            padding = len(payload) % 4
+                            if padding:
+                                payload += '=' * (4 - padding)
+                            decoded = base64.urlsafe_b64decode(payload)
+                            token_data = json_module.loads(decoded)
+                            identity_email = token_data.get('email', 'Unknown')
+                            identity_type = "OAuth User"
+                            print(f"[DEBUG] Authenticated as: {identity_type} - {identity_email}", flush=True)
+                        else:
+                            print(f"[DEBUG] Authenticated as: OAuth User (email not available in token)", flush=True)
+                    else:
+                        print(f"[DEBUG] Authenticated as: OAuth User (no ID token available)", flush=True)
+                except Exception as e:
+                    print(f"[DEBUG] Authenticated as: OAuth User (could not decode email: {e})", flush=True)
+            else:
+                # Fallback: try to get from credentials object
+                if hasattr(credentials, 'email'):
+                    print(f"[DEBUG] Authenticated as: {credentials.email}", flush=True)
+                else:
+                    print(f"[DEBUG] Authenticated identity type: {type(credentials).__name__}", flush=True)
+        except Exception as e:
+            print(f"[DEBUG] Could not determine authenticated identity: {e}", flush=True)
+        
+        # Verify API is accessible by trying a simple call
+        try:
+            print(f"[DEBUG] Verifying API access by listing accounts...", flush=True)
+            test_accounts = service.accounts().list().execute()
+            print(f"[DEBUG] API verification successful - found {len(test_accounts.get('account', []))} account(s)", flush=True)
+        except HttpError as e:
+            if e.resp.status == 403:
+                error_msg = str(e)
+                if 'API not enabled' in error_msg or 'API_NOT_ENABLED' in error_msg:
+                    print(f"[DEBUG] ERROR: Tag Manager API is not enabled", flush=True)
+                else:
+                    print(f"[DEBUG] WARNING: API access test failed with 403: {e}", flush=True)
+                    print(f"[DEBUG] This might indicate OAuth consent screen issues or project mismatch", flush=True)
+            else:
+                print(f"[DEBUG] WARNING: API access test failed: {e}", flush=True)
+        
         return service
+    
+    def _get_oauth_user_email(self, credentials, credentials_path: str) -> Optional[str]:
+        """Get OAuth user email using multiple methods."""
+        # Method 1: Try to get from id_token if available
+        if hasattr(credentials, 'id_token') and credentials.id_token:
+            try:
+                import base64
+                import json as json_module
+                parts = credentials.id_token.split('.')
+                if len(parts) >= 2:
+                    payload = parts[1]
+                    padding = len(payload) % 4
+                    if padding:
+                        payload += '=' * (4 - padding)
+                    decoded = base64.urlsafe_b64decode(payload)
+                    token_data = json_module.loads(decoded)
+                    email = token_data.get('email')
+                    if email:
+                        return email
+            except:
+                pass
+        
+        # Method 2: Try to read from token.json file
+        try:
+            token_file = os.path.join(os.path.dirname(credentials_path), 'token.json')
+            if os.path.exists(token_file):
+                with open(token_file, 'r') as f:
+                    token_data = json.load(f)
+                    # Some token files have 'account' field with email
+                    account = token_data.get('account', '')
+                    if account:
+                        return account
+        except:
+            pass
+        
+        # Method 3: Try to use Google userinfo API
+        try:
+            userinfo_service = build('oauth2', 'v2', credentials=credentials)
+            user_info = userinfo_service.userinfo().get().execute()
+            if user_info and user_info.get('email'):
+                return user_info.get('email')
+        except:
+            pass
+        
+        return None
     
     def list_accounts(self) -> List[Dict]:
         """
@@ -256,18 +432,204 @@ class GTMTagUpdater:
         
         return all_containers
     
-    def get_container(self, container_id: str) -> Optional[Dict]:
-        """Get container details including fingerprint for change detection."""
+    def get_container(self, container_id: str, account_id: Optional[str] = None) -> Optional[Dict]:
+        """Get container details including fingerprint, last update date, and permissions."""
+        target_account_id = account_id or self.account_id
         try:
             container = self._api_call_with_retry(
                 self.service.accounts().containers().get(
-                    path=f'accounts/{self.account_id}/containers/{container_id}'
+                    path=f'accounts/{target_account_id}/containers/{container_id}'
                 )
             )
             return container
         except HttpError as e:
+            # Return None for permission errors - let caller handle gracefully
+            if e.resp.status in [403, 404]:
+                return None
             print(f"ERROR: Failed to get container {container_id}: {e}")
             return None
+    
+    def get_container_metadata(self, container_id: str, account_id: Optional[str] = None) -> Optional[Dict]:
+        """
+        Get container metadata including permissions and last update date.
+        
+        Returns:
+            Dict with:
+            - containerId
+            - name
+            - accountId
+            - lastUpdated (timestamp)
+            - permissions (dict with canRead, canEdit, canPublish)
+        """
+        target_account_id = account_id or self.account_id
+        metadata = {
+            'containerId': container_id,
+            'accountId': target_account_id,
+        }
+        
+        # Get container details
+        container = self.get_container(container_id, account_id=target_account_id)
+        if not container:
+            # No permission or container doesn't exist
+            metadata['permissions'] = {
+                'canRead': False,
+                'canEdit': False,
+                'canPublish': False,
+            }
+            return metadata
+        
+        metadata['name'] = container.get('name', '')
+        metadata['lastUpdated'] = container.get('fingerprint', '')  # fingerprint changes on updates
+        
+        # Try to get workspace to check read permissions
+        workspace_id = self.get_workspace(container_id, account_id=target_account_id)
+        can_read = workspace_id is not None
+        
+        # Try to list tags to check read permissions
+        can_edit = False
+        can_publish = False
+        
+        if can_read and workspace_id:
+            try:
+                # Try to list tags (read permission)
+                tags = self._api_call_with_retry(
+                    self.service.accounts().containers().workspaces().tags().list(
+                        parent=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                    )
+                )
+                can_read = tags is not None
+                
+                # Try to get workspace to check edit permissions
+                # If we can get workspace, we likely have edit permissions
+                workspace = self._api_call_with_retry(
+                    self.service.accounts().containers().workspaces().get(
+                        path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                    )
+                )
+                can_edit = workspace is not None
+                
+                # Check publish permissions by trying to get container versions
+                try:
+                    versions = self._api_call_with_retry(
+                        self.service.accounts().containers().versions().list(
+                            parent=f'accounts/{target_account_id}/containers/{container_id}'
+                        )
+                    )
+                    can_publish = versions is not None
+                except:
+                    can_publish = False
+                    
+            except HttpError as e:
+                if e.resp.status in [403, 404]:
+                    can_read = False
+                    can_edit = False
+                    can_publish = False
+        
+        metadata['permissions'] = {
+            'canRead': can_read,
+            'canEdit': can_edit,
+            'canPublish': can_publish,
+        }
+        
+        # Get last updated timestamp from container
+        # Try to get the latest published version to find the last update date
+        try:
+            versions = self._api_call_with_retry(
+                self.service.accounts().containers().versions().list(
+                    parent=f'accounts/{target_account_id}/containers/{container_id}'
+                )
+            )
+            if versions and versions.get('containerVersion'):
+                # Get the latest version (first in list is usually the most recent)
+                # But we should check for published versions or sort by date if available
+                version_list = versions.get('containerVersion', [])
+                if version_list:
+                    # Try to find the most recent published version
+                    # Versions are typically sorted with newest first, but let's verify
+                    latest_version = None
+                    for version in version_list:
+                        # Check if this version is published (has a name with date)
+                        version_name = version.get('name', '')
+                        if version_name and ('Version' in version_name or '/' in version_name):
+                            latest_version = version
+                            break
+                    
+                    # If no version with name found, use the first one
+                    if not latest_version:
+                        latest_version = version_list[0]
+                    
+                    if latest_version:
+                        # Try to extract date from version 'name' field first (e.g., "Version 47: 11/04/2025, 10:06 AM")
+                        version_name = latest_version.get('name', '')
+                        if version_name:
+                            # Try to parse date from name like "Version 47: 11/04/2025, 10:06 AM"
+                            import re
+                            # Look for date patterns: MM/DD/YYYY or YYYY-MM-DD
+                            date_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', version_name)
+                            if date_match:
+                                date_str = date_match.group(1)
+                                try:
+                                    from datetime import datetime
+                                    # Parse MM/DD/YYYY format
+                                    last_updated_date = datetime.strptime(date_str, '%m/%d/%Y')
+                                    metadata['lastUpdated'] = last_updated_date.strftime('%Y-%m-%d')
+                                except:
+                                    # If parsing fails, use the date string as-is
+                                    metadata['lastUpdated'] = date_str
+                            else:
+                                # Try YYYY-MM-DD format
+                                date_match = re.search(r'(\d{4}-\d{2}-\d{2})', version_name)
+                                if date_match:
+                                    metadata['lastUpdated'] = date_match.group(1)
+                                else:
+                                    # Fallback: use the version name
+                                    metadata['lastUpdated'] = version_name
+                        else:
+                            # If no name field, try containerVersionId
+                            version_id = latest_version.get('containerVersionId', '')
+                            
+                            # Check if it's a Unix timestamp (milliseconds)
+                            try:
+                                # Try to parse as integer timestamp
+                                if version_id and str(version_id).isdigit():
+                                    timestamp_ms = int(version_id)
+                                    # Check if it's a reasonable timestamp (after 2000-01-01)
+                                    if timestamp_ms > 946684800000:  # 2000-01-01 in ms
+                                        from datetime import datetime
+                                        last_updated_date = datetime.fromtimestamp(timestamp_ms / 1000)
+                                        metadata['lastUpdated'] = last_updated_date.strftime('%Y-%m-%d')
+                                    else:
+                                        # Might be a version ID in YYYYMMDDHHMMSS format
+                                        if len(str(version_id)) >= 8:
+                                            year = int(str(version_id)[:4])
+                                            month = int(str(version_id)[4:6])
+                                            day = int(str(version_id)[6:8])
+                                            from datetime import datetime
+                                            last_updated_date = datetime(year, month, day)
+                                            metadata['lastUpdated'] = last_updated_date.strftime('%Y-%m-%d')
+                                        else:
+                                            metadata['lastUpdated'] = str(version_id)
+                                else:
+                                    # Try parsing as YYYYMMDDHHMMSS format
+                                    if version_id and len(str(version_id)) >= 8:
+                                        try:
+                                            year = int(str(version_id)[:4])
+                                            month = int(str(version_id)[4:6])
+                                            day = int(str(version_id)[6:8])
+                                            from datetime import datetime
+                                            last_updated_date = datetime(year, month, day)
+                                            metadata['lastUpdated'] = last_updated_date.strftime('%Y-%m-%d')
+                                        except:
+                                            metadata['lastUpdated'] = str(version_id) if version_id else 'Unknown'
+                                    else:
+                                        metadata['lastUpdated'] = str(version_id) if version_id else 'Unknown'
+                            except:
+                                metadata['lastUpdated'] = str(version_id) if version_id else 'Unknown'
+        except:
+            # Fallback to fingerprint if version lookup fails
+            metadata['lastUpdated'] = container.get('fingerprint', 'Unknown')
+        
+        return metadata
     
     def get_workspace(self, container_id: str, account_id: Optional[str] = None) -> Optional[str]:
         """Get the default workspace ID for a container."""
@@ -292,12 +654,80 @@ class GTMTagUpdater:
             print(f"ERROR: Failed to get workspace for container {container_id}: {e}")
             return None
     
-    def find_tag(self, container_id: str, workspace_id: str, tag_name: str) -> Optional[Dict]:
+    def create_workspace(self, container_id: str, workspace_name: str, account_id: Optional[str] = None) -> Optional[str]:
+        """
+        Create a new workspace for a container.
+        This isolates changes from other workspaces to prevent conflicts.
+        
+        Args:
+            container_id: Container ID
+            workspace_name: Name for the new workspace (e.g., "Tag Update - 3E_Pop-up - 2025-01-17")
+            account_id: Optional account ID (if different from the initialized account)
+        
+        Returns:
+            Workspace ID if successful, None otherwise
+        """
+        target_account_id = account_id or self.account_id
+        try:
+            workspace = self._api_call_with_retry(
+                self.service.accounts().containers().workspaces().create(
+                    parent=f'accounts/{target_account_id}/containers/{container_id}',
+                    body={'name': workspace_name}
+                )
+            )
+            if workspace:
+                workspace_id = workspace.get('workspaceId')
+                if workspace_id:
+                    print(f"  ✓ Created workspace: {workspace_name} (ID: {workspace_id})")
+                    return workspace_id
+            return None
+        except HttpError as e:
+            print(f"ERROR: Failed to create workspace for container {container_id}: {e}")
+            return None
+    
+    def delete_workspace(self, container_id: str, workspace_id: str, account_id: Optional[str] = None) -> bool:
+        """
+        Delete a workspace.
+        
+        Args:
+            container_id: Container ID
+            workspace_id: Workspace ID to delete
+            account_id: Optional account ID (if different from the initialized account)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        target_account_id = account_id or self.account_id
+        try:
+            self._api_call_with_retry(
+                self.service.accounts().containers().workspaces().delete(
+                    path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                )
+            )
+            print(f"  ✓ Deleted workspace: {workspace_id}")
+            return True
+        except HttpError as e:
+            # If workspace doesn't exist (404) or already deleted, that's okay
+            if e.resp.status == 404:
+                print(f"  ℹ️  Workspace {workspace_id} already deleted or doesn't exist")
+                return True
+            # If permission denied (403), the token likely needs to be regenerated
+            if e.resp.status == 403:
+                print(f"  ⚠️  Permission denied when deleting workspace {workspace_id}")
+                print(f"  ⚠️  This usually means the OAuth token needs to be regenerated with proper scopes")
+                print(f"  ⚠️  Please delete the token.json file and re-run to re-authenticate")
+                print(f"  ⚠️  Workspace {workspace_id} may need to be manually deleted in GTM")
+                return False
+            print(f"ERROR: Failed to delete workspace {workspace_id}: {e}")
+            return False
+    
+    def find_tag(self, container_id: str, workspace_id: str, tag_name: str, account_id: Optional[str] = None) -> Optional[Dict]:
         """Find a tag by name in a workspace."""
+        target_account_id = account_id or self.account_id
         try:
             tags = self._api_call_with_retry(
                 self.service.accounts().containers().workspaces().tags().list(
-                parent=f'accounts/{self.account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                parent=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
                 )
             )
             
@@ -311,8 +741,9 @@ class GTMTagUpdater:
             print(f"ERROR: Failed to find tag in container {container_id}: {e}")
             return None
     
-    def update_tag(self, container_id: str, workspace_id: str, tag: Dict, new_content: str) -> bool:
+    def update_tag(self, container_id: str, workspace_id: str, tag: Dict, new_content: str, account_id: Optional[str] = None) -> bool:
         """Update a tag's content."""
+        target_account_id = account_id or self.account_id
         try:
             # Update the tag's HTML content
             # For Custom HTML tags, the content is in tag.parameter
@@ -340,7 +771,7 @@ class GTMTagUpdater:
             # Update the tag
             updated_tag = self._api_call_with_retry(
                 self.service.accounts().containers().workspaces().tags().update(
-                path=f'accounts/{self.account_id}/containers/{container_id}/workspaces/{workspace_id}/tags/{tag["tagId"]}',
+                path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}/tags/{tag["tagId"]}',
                 body=tag
                 )
             )
@@ -350,32 +781,173 @@ class GTMTagUpdater:
             print(f"ERROR: Failed to update tag: {e}")
             return False
     
-    def create_version(self, container_id: str, workspace_id: str) -> Optional[str]:
-        """Create a new container version from workspace."""
+    def create_version(self, container_id: str, workspace_id: str, account_id: Optional[str] = None, tag_name: Optional[str] = None) -> Optional[str]:
+        """Create a new container version from workspace.
+        
+        Args:
+            container_id: Container ID
+            workspace_id: Workspace ID
+            account_id: Optional account ID
+            tag_name: Optional tag name to include in version name/description
+        """
+        target_account_id = account_id or self.account_id
         try:
+            # First, verify we can access the workspace (this tests basic permissions)
+            try:
+                workspace = self._api_call_with_retry(
+                    self.service.accounts().containers().workspaces().get(
+                        path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                    )
+                )
+                if not workspace:
+                    print(f"ERROR: Cannot access workspace {workspace_id} - permission denied")
+                    return None
+            except HttpError as e:
+                if e.resp.status == 403:
+                    print(f"ERROR: Cannot access workspace {workspace_id} - permission denied")
+                    print(f"  This suggests you don't have edit permissions on this container in GTM.")
+                    print(f"  Even with correct OAuth scopes, you need to be granted access in GTM itself.")
+                    print(f"  Check: https://tagmanager.google.com/ - ensure you have 'Edit' permissions on container {container_id}")
+                    return None
+                raise
+            
+            # Note: We skip the API test here since it's already done during service initialization
+            # If we got this far, the API is accessible for read operations
+            
+            # Now try to create the version with name and description
+            # GTM requires version name and notes (description) when creating a version
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            if tag_name:
+                version_name = f"Tag Update - {tag_name} - {timestamp}"
+                version_notes = f"Automated update of tag: {tag_name}"
+            else:
+                version_name = f"Tag Update - {timestamp}"
+                version_notes = f"Automated tag update via API"
+            
             version = self._api_call_with_retry(
                 self.service.accounts().containers().workspaces().create_version(
-                path=f'accounts/{self.account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                    path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}',
+                    body={
+                        'name': version_name,
+                        'notes': version_notes
+                    }
                 )
             )
             if version:
                 return version.get('containerVersionId')
             return None
         except HttpError as e:
-            print(f"ERROR: Failed to create version: {e}")
+            if e.resp.status == 403:
+                error_msg = str(e)
+                error_details = e.error_details if hasattr(e, 'error_details') else []
+                
+                # Check if it's an API not enabled error
+                if 'API not enabled' in error_msg or any('API_NOT_ENABLED' in str(d) for d in error_details):
+                    print(f"ERROR: Tag Manager API is not enabled in Google Cloud Console")
+                    print(f"")
+                    print(f"  REQUIRED FIX - Enable Tag Manager API:")
+                    print(f"    1. Go to: https://console.cloud.google.com/apis/library/tagmanager.googleapis.com")
+                    print(f"    2. Select project: eee-tag-management")
+                    print(f"    3. Click 'ENABLE' button")
+                    print(f"    4. Wait for API to enable (may take 1-2 minutes)")
+                    print(f"    5. Try the update again")
+                elif 'insufficient authentication scopes' in error_msg.lower() or 'insufficient permission' in error_msg.lower():
+                    print(f"ERROR: Permission denied when creating version")
+                    print(f"  OAuth scopes are correct and API is enabled, but GTM is rejecting the request.")
+                    print(f"")
+                    
+                    # Try to identify the authenticated user
+                    authenticated_user = "Unknown"
+                    try:
+                        # First, try to use cached email from initialization
+                        if hasattr(self, '_authenticated_user_email') and self._authenticated_user_email:
+                            authenticated_user = self._authenticated_user_email
+                        elif hasattr(self.service._http, 'credentials'):
+                            creds = self.service._http.credentials
+                            if hasattr(creds, 'service_account_email'):
+                                authenticated_user = creds.service_account_email
+                            else:
+                                # Try to get OAuth user email using helper method
+                                email = self._get_oauth_user_email(creds, self.credentials_path)
+                                if email:
+                                    authenticated_user = email
+                    except:
+                        pass
+                    
+                    print(f"  Authenticated User: {authenticated_user}")
+                    print(f"  Container ID: {container_id}")
+                    print(f"  Account ID: {target_account_id}")
+                    print(f"  Workspace ID: {workspace_id}")
+                    print(f"")
+                    print(f"  ROOT CAUSE: The 'create_version' operation requires 'Publish' permission in GTM.")
+                    print(f"  Even with correct OAuth scopes, you must have 'Publish' access at the container level.")
+                    print(f"")
+                    print(f"  REQUIRED FIX - Grant Publish Permission in GTM:")
+                    print(f"    1. Go to: https://tagmanager.google.com/")
+                    print(f"    2. Select container {container_id}")
+                    print(f"    3. Click 'Admin' (gear icon) in the top menu")
+                    print(f"    4. Click 'User Management'")
+                    print(f"    5. Find the account: {authenticated_user}")
+                    print(f"    6. Ensure permission is set to 'Publish' (not just 'Edit')")
+                    print(f"    7. Click 'Save'")
+                    print(f"    8. Try the update again")
+                    print(f"")
+                    print(f"  NOTE: 'Edit' permission is NOT sufficient for creating versions.")
+                    print(f"        You MUST have 'Publish' permission to use create_version API.")
+                    print(f"")
+                    print(f"  DIAGNOSTIC: Verify the container belongs to account {target_account_id}")
+                    print(f"             If the container is in a different account, ensure {authenticated_user}")
+                    print(f"             has 'Publish' permission in that account's container.")
+                    print(f"")
+                    print(f"  IMPORTANT: If you recently granted 'Publish' permission, the OAuth token may need")
+                    print(f"             to be refreshed. Try deleting token.json and re-authenticating:")
+                    print(f"             1. Delete: automation/token.json")
+                    print(f"             2. Re-run the update - it will prompt you to re-authenticate")
+                    print(f"             3. Grant all requested permissions when prompted")
+                    print(f"")
+                    print(f"  Also verify OAuth consent screen (if still having issues):")
+                    print(f"    1. Go to: https://console.cloud.google.com/apis/credentials/consent")
+                    print(f"    2. Ensure {authenticated_user} is in 'Test users' (if app is in Testing mode)")
+                    print(f"    3. Or publish the app if you want broader access")
+                    print(f"")
+                    print(f"  Current token scopes: {getattr(self.service._http.credentials, 'scopes', 'Unknown') if hasattr(self.service._http, 'credentials') else 'Unknown'}")
+                    print(f"  Required scopes: {self.SCOPES}")
+                    print(f"")
+                    print(f"  Full error details: {error_details}")
+                else:
+                    print(f"ERROR: Permission denied when creating version: {e}")
+                    print(f"  Error details: {error_details}")
+            else:
+                print(f"ERROR: Failed to create version: {e}")
             return None
     
-    def publish_version(self, container_id: str, version_id: str) -> bool:
+    def publish_version(self, container_id: str, version_id: str, account_id: Optional[str] = None) -> bool:
         """Publish a container version."""
+        target_account_id = account_id or self.account_id
         try:
             self._api_call_with_retry(
             self.service.accounts().containers().versions().publish(
-                path=f'accounts/{self.account_id}/containers/{container_id}/versions/{version_id}'
+                path=f'accounts/{target_account_id}/containers/{container_id}/versions/{version_id}'
                 )
             )
             return True
         except HttpError as e:
-            print(f"ERROR: Failed to publish version: {e}")
+            if e.resp.status == 403:
+                error_msg = str(e)
+                if 'insufficient authentication scopes' in error_msg.lower() or 'insufficient permission' in error_msg.lower():
+                    print(f"ERROR: Permission denied - OAuth token missing required scopes")
+                    print(f"  Required scopes:")
+                    for scope in self.SCOPES:
+                        print(f"    - {scope}")
+                    print(f"  To fix:")
+                    print(f"    1. Delete the token.json file to force re-authentication")
+                    print(f"    2. Re-run the script - it will prompt you to re-authenticate")
+                    print(f"    3. Grant ALL requested permissions when prompted")
+                else:
+                    print(f"ERROR: Permission denied when publishing version: {e}")
+            else:
+                print(f"ERROR: Failed to publish version: {e}")
             return False
     
     def list_all_tags(self, container_id: str, workspace_id: str) -> List[str]:
@@ -429,8 +1001,13 @@ class GTMTagUpdater:
                 tag_name = tag.get('name', '')
                 
                 # Filter for 3E tags if requested
-                if filter_3e and '3E' not in tag_name and 'Template' not in tag_name:
-                    continue
+                # If filter_3e is True, only show tags with '3E' or 'Template' in the name
+                # If filter_3e is False, show all tags
+                if filter_3e:
+                    # Only include tags that have '3E' or 'Template' in the name
+                    if '3E' not in tag_name and 'Template' not in tag_name:
+                        continue  # Skip tags that don't have '3E' or 'Template'
+                # If filter_3e is False, we don't enter the if block, so all tags are included
                 
                 # Extract version
                 version = self.extract_version_from_tag(tag)
@@ -439,6 +1016,7 @@ class GTMTagUpdater:
                     'tagId': tag.get('tagId', ''),
                     'tagName': tag_name,
                     'version': version,
+                    'paused': tag.get('paused', False),  # Tag paused status
                 })
             
             return result
@@ -528,53 +1106,129 @@ class GTMTagUpdater:
         tag_name: str, 
         new_content: str, 
         publish: bool = True,
-        dry_run: bool = False
+        dry_run: bool = False,
+        account_id: Optional[str] = None
     ) -> bool:
-        """Update a tag in a specific container."""
+        """
+        Update a tag in a specific container.
+        
+        Creates a new workspace to isolate changes and prevent conflicts with other edits.
+        After publishing, the workspace is automatically removed by GTM.
+        If there's an error, the workspace is manually deleted to prevent leftovers.
+        """
         print(f"\n{'[DRY RUN] ' if dry_run else ''}Processing container: {container_id}")
+        target_account_id = account_id or self.account_id
+        workspace_id = None  # Track workspace ID for cleanup
         
-        # Get workspace
-        workspace_id = self.get_workspace(container_id)
-        if not workspace_id:
-            print(f"  ❌ Could not get workspace for {container_id}")
-            return False
-        
-        # Find tag
-        tag = self.find_tag(container_id, workspace_id, tag_name)
-        if not tag:
-            print(f"  ⚠️  Tag '{tag_name}' not found in {container_id}")
-            return False
-        
-        print(f"  ✓ Found tag: {tag_name} (ID: {tag['tagId']})")
-        
-        if dry_run:
-            print(f"  [DRY RUN] Would update tag content")
+        try:
+            # Get default workspace first to find the tag (read-only operation)
+            default_workspace_id = self.get_workspace(container_id, account_id=target_account_id)
+            if not default_workspace_id:
+                print(f"  ❌ Could not get default workspace for {container_id}")
+                return False
+            
+            # Find tag in default workspace (read-only)
+            tag = self.find_tag(container_id, default_workspace_id, tag_name, account_id=target_account_id)
+            if not tag:
+                print(f"  ⚠️  Tag '{tag_name}' not found in {container_id}")
+                return False
+            
+            print(f"  ✓ Found tag: {tag_name} (ID: {tag['tagId']})")
+            
+            if dry_run:
+                print(f"  [DRY RUN] Would create new workspace and update tag content")
+                return True
+            
+            # Create a new workspace for this update to isolate changes
+            from datetime import datetime
+            # Use format without colons (GTM doesn't allow colons in workspace names)
+            workspace_name = f"Tag Update - {tag_name} - {datetime.now().strftime('%Y-%m-%d %H-%M-%S')}"
+            workspace_id = self.create_workspace(container_id, workspace_name, account_id=target_account_id)
+            if not workspace_id:
+                print(f"  ❌ Failed to create workspace for {container_id}")
+                return False
+            
+            # Find the tag in the new workspace (it should be copied from default workspace)
+            # Note: When a workspace is created, it starts with a copy of the default workspace
+            tag_in_workspace = self.find_tag(container_id, workspace_id, tag_name, account_id=target_account_id)
+            if not tag_in_workspace:
+                print(f"  ⚠️  Tag '{tag_name}' not found in new workspace (this shouldn't happen)")
+                return False
+            
+            # Update tag in the new workspace
+            if not self.update_tag(container_id, workspace_id, tag_in_workspace, new_content, account_id=target_account_id):
+                print(f"  ❌ Failed to update tag")
+                return False
+            
+            print(f"  ✓ Tag updated successfully in workspace")
+            
+            if publish:
+                # Create version from the new workspace (include tag name for better traceability)
+                version_id = self.create_version(container_id, workspace_id, account_id=target_account_id, tag_name=tag_name)
+                if not version_id:
+                    print(f"  ❌ Failed to create version")
+                    # Check if it's a permission error and provide detailed help
+                    try:
+                        # Check what scopes the current token has
+                        if hasattr(self.service._http, 'credentials') and hasattr(self.service._http.credentials, 'scopes'):
+                            token_scopes = self.service._http.credentials.scopes or []
+                            print(f"  ⚠️  Current token scopes: {token_scopes}")
+                            required_set = set(self.SCOPES)
+                            token_set = set(token_scopes)
+                            missing = required_set - token_set
+                            if missing:
+                                print(f"  ⚠️  Missing scopes: {list(missing)}")
+                            else:
+                                print(f"  ⚠️  Token has all scopes, but API still rejecting. This usually means:")
+                                print(f"      - Tag Manager API is not enabled in Google Cloud Console")
+                                print(f"      - OAuth consent screen is not configured properly")
+                                print(f"      - The OAuth client doesn't have Tag Manager API access")
+                    except Exception as e:
+                        print(f"  ⚠️  Could not check token scopes: {e}")
+                    return False
+                
+                print(f"  ✓ Created version: {version_id}")
+                
+                # Publish version (workspace will be automatically removed after publishing)
+                if not self.publish_version(container_id, version_id, account_id=target_account_id):
+                    print(f"  ❌ Failed to publish version")
+                    # Check if it's a permission error
+                    try:
+                        # Try to get workspace to see if we have access
+                        workspace = self._api_call_with_retry(
+                            self.service.accounts().containers().workspaces().get(
+                                path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+                            )
+                        )
+                        if workspace:
+                            print(f"  ⚠️  Permission error: OAuth token missing required scopes")
+                            print(f"  ⚠️  Required scopes: {', '.join(self.SCOPES)}")
+                            print(f"  ⚠️  Please delete token.json and re-authenticate")
+                    except:
+                        pass
+                    return False
+                
+                print(f"  ✓ Version published successfully (workspace automatically removed)")
+                # Workspace is automatically deleted by GTM after publishing, so clear our reference
+                workspace_id = None
+            else:
+                # If not publishing, we need to manually delete the workspace
+                # (though this shouldn't happen in normal operation)
+                if workspace_id:
+                    self.delete_workspace(container_id, workspace_id, account_id=target_account_id)
+                    workspace_id = None
+            
             return True
-        
-        # Update tag
-        if not self.update_tag(container_id, workspace_id, tag, new_content):
-            print(f"  ❌ Failed to update tag")
+            
+        except Exception as e:
+            print(f"  ❌ Unexpected error during update: {e}")
             return False
-        
-        print(f"  ✓ Tag updated successfully")
-        
-        if publish:
-            # Create version
-            version_id = self.create_version(container_id, workspace_id)
-            if not version_id:
-                print(f"  ❌ Failed to create version")
-                return False
             
-            print(f"  ✓ Created version: {version_id}")
-            
-            # Publish version
-            if not self.publish_version(container_id, version_id):
-                print(f"  ❌ Failed to publish version")
-                return False
-            
-            print(f"  ✓ Version published successfully")
-        
-        return True
+        finally:
+            # Always clean up workspace if it still exists (e.g., if publish failed or error occurred)
+            if workspace_id:
+                print(f"  🧹 Cleaning up workspace {workspace_id}...")
+                self.delete_workspace(container_id, workspace_id, account_id=target_account_id)
 
 
 def read_script_file(file_path: str) -> str:
@@ -847,12 +1501,20 @@ Examples:
         skipped_count = 0
         
         for container_id in container_ids:
+            # Get account_id for this container if we have container objects
+            container_account_id = None
+            if containers:
+                container_obj = next((c for c in containers if c.get('containerId') == container_id), None)
+                if container_obj:
+                    container_account_id = container_obj.get('accountId')
+            
             result = updater.update_tag_in_container(
                 container_id,
                 args.tag_name,
                 script_content,
                 publish=not args.no_publish,
-                dry_run=args.dry_run
+                dry_run=args.dry_run,
+                account_id=container_account_id
             )
             
             if result:

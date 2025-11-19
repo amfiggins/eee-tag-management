@@ -1,3 +1,12 @@
+/**
+ * GTM Tag Update API Route
+ * Handles tag updates across multiple GTM containers
+ * 
+ * Author: Anthony Figgins
+ * Version: 1.2.0
+ * Date Updated: 2025-11-18
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import { join } from 'path';
@@ -12,7 +21,8 @@ export async function POST(request: NextRequest) {
       accountId, 
       credentialsPath, 
       containerIds, 
-      skipIfUpToDate = true 
+      skipIfUpToDate = true,
+      publish = true // Whether to publish the change (default: true)
     } = body;
     
     if (!tagName || !accountId || !credentialsPath || !containerIds || !Array.isArray(containerIds)) {
@@ -22,8 +32,8 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Use repo tag name if provided, otherwise use container tag name
-    const fileTagName = repoTagName || tagName;
+    // Use repo tag name if provided, otherwise map GTM tag name to repo tag name
+    const fileTagName = repoTagName || getRepoTagName(tagName);
     
     // Get script file path using the repo tag name
     const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(fileTagName), fileTagName);
@@ -40,7 +50,7 @@ export async function POST(request: NextRequest) {
     const containersStr = containerIds.join(',');
     
     return new Promise<NextResponse>((resolve) => {
-      const pythonProcess = spawn(pythonExecutable, [
+      const args = [
         '-u', // Unbuffered
         pythonScript,
         '--tag-name', tagName,
@@ -49,7 +59,14 @@ export async function POST(request: NextRequest) {
         '--credentials', fixedCredentialsPath,
         '--containers', containersStr,
         '--delay', '1.0',
-      ], {
+      ];
+      
+      // Add --no-publish flag if publish is false
+      if (!publish) {
+        args.push('--no-publish');
+      }
+      
+      const pythonProcess = spawn(pythonExecutable, args, {
         cwd: join(process.cwd(), '..', 'automation'),
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -67,11 +84,43 @@ export async function POST(request: NextRequest) {
 
       pythonProcess.on('close', (code: number) => {
         if (code !== 0) {
+          // Combine stdout and stderr for error analysis
+          const fullOutput = (stdout + '\n' + stderr).trim();
+          
+          // Extract meaningful error lines
+          const errorLines = fullOutput.split('\n').filter((line: string) => 
+            line.trim() && 
+            !line.includes('FutureWarning') &&
+            !line.includes('warnings.warn') &&
+            !line.includes('[DEBUG]') &&
+            (line.includes('Error') || line.includes('ERROR') || line.includes('Traceback') || 
+             line.includes('Exception') || line.includes('Failed') || line.includes('not found') ||
+             line.includes('❌') || line.includes('⚠️'))
+          );
+          
+          let errorMessage = `Python script exited with code ${code}`;
+          
+          // If we found specific error lines, use those
+          if (errorLines.length > 0) {
+            errorMessage = errorLines.slice(0, 15).join('\n'); // Show first 15 error lines
+          } else {
+            // Otherwise, show the last 20 lines of output (most recent errors are usually at the end)
+            const allLines = fullOutput.split('\n').filter(l => l.trim());
+            const lastLines = allLines.slice(-20);
+            if (lastLines.length > 0) {
+              errorMessage = `${errorMessage}\n\nLast output:\n${lastLines.join('\n')}`;
+            } else if (stderr) {
+              errorMessage = `${errorMessage}\n\nSTDERR:\n${stderr.substring(0, 1000)}`;
+            } else if (stdout) {
+              errorMessage = `${errorMessage}\n\nSTDOUT:\n${stdout.substring(0, 1000)}`;
+            }
+          }
+          
           resolve(NextResponse.json(
             { 
               success: false,
-              error: `Python script exited with code ${code}`,
-              details: stderr || stdout
+              error: errorMessage,
+              details: fullOutput.length > 0 ? fullOutput : (stderr || stdout || 'No output from Python script')
             },
             { status: 500 }
           ));
@@ -108,8 +157,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// Map GTM tag names to repository file names (handles naming mismatches)
+function getRepoTagName(gtmTagName: string): string {
+  const tagNameMap: Record<string, string> = {
+    // GTM tag name -> Repo file name
+    '3E_3EI Recruiter': '3E_3EI Recruiter Unified', // GTM uses shorter name, repo has "Unified"
+  };
+  
+  return tagNameMap[gtmTagName] || gtmTagName;
+}
+
 function getTagCategory(tagName: string): string {
   // Map tag names to their solution folders (new structure)
+  // Use repo tag name for category lookup
+  const repoTagName = getRepoTagName(tagName);
+  
   const categoryMap: Record<string, string> = {
     // Base Solutions
     'Template - 3E Config': 'base-solutions',
@@ -124,7 +186,8 @@ function getTagCategory(tagName: string): string {
     '3E_3EI Recruiter Activity': 'chatbot-solutions',
     '3E_3EI Recruiter Conversion': 'chatbot-solutions',
     '3E_3EI Recruiter Tracking': 'chatbot-solutions',
-    '3E_3EI Recruiter Unified': 'chatbot-solutions',
+    '3E_3EI Recruiter': 'chatbot-solutions', // GTM name
+    '3E_3EI Recruiter Unified': 'chatbot-solutions', // Repo name
     '3E_Insights Pixel': 'chatbot-solutions',
     // Pop-up Solutions
     '3E_Pop-up': 'pop-up-solutions',
@@ -132,7 +195,8 @@ function getTagCategory(tagName: string): string {
     '3E_Pop-up Tracking': 'pop-up-solutions',
   };
   
-  return categoryMap[tagName] || 'base-solutions';
+  // Try repo tag name first, then original tag name
+  return categoryMap[repoTagName] || categoryMap[tagName] || 'base-solutions';
 }
 
 function parseUpdateOutput(output: string): any {

@@ -36,6 +36,9 @@ token.json
 .env
 .env.local
 
+# Archived credentials (backup only, not in use)
+automation/.archive/
+
 # IDE
 .vscode/
 .idea/

@@ -19,6 +19,7 @@ interface ContainerTag {
   tagId: string;
   tagName: string;
   version?: string;
+  paused?: boolean; // Tag paused status
 }
 
 /**
@@ -28,6 +29,12 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { containerId, accountId, credentialsPath, filter3E } = body;
+    
+    // Debug logging
+    console.log(`[API] Getting tags for container ${containerId}, filter3E: ${filter3E} (type: ${typeof filter3E})`);
+    console.log(`[API] filter3E === true: ${filter3E === true}, filter3E === 'true': ${filter3E === 'true'}`);
+    const filterValue = filter3E === true || filter3E === 'true' ? 'True' : 'False';
+    console.log(`[API] Passing filter_3e=${filterValue} to Python`);
 
     if (!containerId || !accountId || !credentialsPath) {
       return NextResponse.json(
@@ -63,7 +70,9 @@ try:
     updater = GTMTagUpdater('${fixedCredentialsPath}', '${accountId}')
     # Use the container's accountId if different from the primary account
     # Pass accountId to get_tags_in_container so it uses the correct account
-    tags = updater.get_tags_in_container('${containerId}', filter_3e=${filter3E ? 'True' : 'False'}, account_id='${accountId}')
+    filter_3e_value = ${filter3E === true || filter3E === 'true' ? 'True' : 'False'}
+    print(f"[DEBUG] filter_3e parameter: {filter_3e_value}", file=sys.stderr)
+    tags = updater.get_tags_in_container('${containerId}', filter_3e=filter_3e_value, account_id='${accountId}')
     # Write JSON directly to stdout file descriptor (fd 1) to bypass the stdout redirection
     result = json.dumps({"success": True, "tags": tags})
     os.write(1, result.encode('utf-8'))

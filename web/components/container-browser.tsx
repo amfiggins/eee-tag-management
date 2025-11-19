@@ -6,8 +6,8 @@
  * Containers sorted by name (then ID if no name)
  * 
  * Author: Anthony Figgins
- * Version: 2.3.0
- * Date Updated: 2025-11-17
+ * Version: 2.4.0
+ * Date Updated: 2025-11-18
  */
 
 'use client';
@@ -22,6 +22,7 @@ interface ContainerTag {
   tagId: string;
   tagName: string;
   version?: string;
+  paused?: boolean; // Tag paused status
   repoVersion?: string; // Version from tags folder
   repoTagName?: string; // Actual tag name in repo (may differ from container tag name)
   repoDateUpdated?: string;
@@ -30,10 +31,25 @@ interface ContainerTag {
   updating?: boolean; // true if update is in progress
 }
 
+interface ContainerMetadata {
+  containerId: string;
+  name?: string;
+  accountId: string;
+  lastUpdated?: string;
+  permissions: {
+    canRead: boolean;
+    canEdit: boolean;
+    canPublish: boolean;
+  };
+}
+
 interface ContainerListItem {
   containerId: string;
   containerName?: string;
   accountId?: string;
+  // Cached metadata
+  metadata?: ContainerMetadata;
+  cachedAt?: number; // Timestamp when metadata was cached
 }
 
 interface ContainerBrowserProps {
@@ -46,11 +62,80 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
   const [containerTags, setContainerTags] = useState<Map<string, ContainerTag[]>>(new Map()); // containerId -> tags
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [loadingTags, setLoadingTags] = useState<Set<string>>(new Set()); // Set of container IDs loading tags
+  const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(new Set()); // Set of container IDs loading metadata
   const [error, setError] = useState('');
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState('');
   const [filter3EOnly, setFilter3EOnly] = useState(true); // Filter for 3E_ tags only
-  const [allAccounts, setAllAccounts] = useState(false); // Search all accounts or just the specified one
+  const [allAccounts, setAllAccounts] = useState(true); // Search all accounts or just the specified one (default: true)
+  const [selectedTags, setSelectedTags] = useState<Map<string, Set<string>>>(new Map()); // containerId -> Set of tagNames
+
+  // Cache duration: 12 months in milliseconds
+  const CACHE_DURATION = 12 * 30 * 24 * 60 * 60 * 1000; // 12 months
+
+  // Load container list from cache
+  const loadContainerListFromCache = (): ContainerListItem[] | null => {
+    try {
+      const cacheKey = `gtm_container_list_${accountId}_${allAccounts}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const data = JSON.parse(cached);
+        // Check if cache is less than 12 months old
+        const cacheAge = Date.now() - data.cachedAt;
+        if (cacheAge < CACHE_DURATION) {
+          return data.containers;
+        }
+      }
+    } catch (error) {
+      console.error('Error reading container list cache:', error);
+    }
+    return null;
+  };
+
+  // Save container list to cache
+  const saveContainerListToCache = (containers: ContainerListItem[]) => {
+    try {
+      const cacheKey = `gtm_container_list_${accountId}_${allAccounts}`;
+      localStorage.setItem(cacheKey, JSON.stringify({
+        containers,
+        cachedAt: Date.now(),
+      }));
+    } catch (error) {
+      console.error('Error saving container list to cache:', error);
+    }
+  };
+
+  // Load container metadata from cache
+  const loadContainerMetadataFromCache = (containerId: string): ContainerMetadata | null => {
+    try {
+      const cacheKey = `gtm_container_metadata_${containerId}`;
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const data = JSON.parse(cached);
+        // Check if cache is less than 12 months old
+        const cacheAge = Date.now() - data.cachedAt;
+        if (cacheAge < CACHE_DURATION) {
+          return data.metadata;
+        }
+      }
+    } catch (error) {
+      console.error('Error reading container metadata cache:', error);
+    }
+    return null;
+  };
+
+  // Save container metadata to cache
+  const saveContainerMetadataToCache = (containerId: string, metadata: ContainerMetadata) => {
+    try {
+      const cacheKey = `gtm_container_metadata_${containerId}`;
+      localStorage.setItem(cacheKey, JSON.stringify({
+        metadata,
+        cachedAt: Date.now(),
+      }));
+    } catch (error) {
+      console.error('Error saving container metadata to cache:', error);
+    }
+  };
 
   // Load tags from cache
   const loadTagsFromCache = (containerId: string): ContainerTag[] | null => {
@@ -84,6 +169,68 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     }
   };
 
+  // Load container metadata
+  const loadContainerMetadata = async (containerId: string, forceReload = false): Promise<ContainerMetadata | null> => {
+    // Check cache first (unless forcing reload)
+    if (!forceReload) {
+      const cached = loadContainerMetadataFromCache(containerId);
+      if (cached) {
+        // Update container list with cached metadata
+        setContainerList(prev => prev.map(c => 
+          c.containerId === containerId 
+            ? { ...c, metadata: cached, cachedAt: Date.now() }
+            : c
+        ));
+        return cached;
+      }
+    }
+
+    // Find container to get accountId
+    const container = containerList.find(c => c.containerId === containerId);
+    const containerAccountId = container?.accountId || accountId;
+
+    setLoadingMetadata(prev => new Set(prev).add(containerId));
+
+    try {
+      const response = await fetch('/api/gtm/container-metadata', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          containerId,
+          accountId: containerAccountId,
+          credentialsPath,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success && data.metadata) {
+        const metadata = data.metadata;
+        // Save to cache
+        saveContainerMetadataToCache(containerId, metadata);
+        // Update container list
+        setContainerList(prev => prev.map(c => 
+          c.containerId === containerId 
+            ? { ...c, metadata, cachedAt: Date.now() }
+            : c
+        ));
+        return metadata;
+      }
+      return null;
+    } catch (err: any) {
+      console.error('Error loading container metadata:', err);
+      return null;
+    } finally {
+      setLoadingMetadata(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(containerId);
+        return newSet;
+      });
+    }
+  };
+
   // Load tags for a container when it's expanded
   const loadTagsForContainer = async (containerId: string, forceReload = false) => {
     // Find the container to get its accountId (if different from primary account)
@@ -91,9 +238,11 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     const containerAccountId = container?.accountId || accountId; // Use container's accountId if available
     
     // Check cache first (unless forcing reload)
+    // IMPORTANT: Always check cache with current filter3EOnly value to ensure we get the right cached data
     if (!forceReload) {
       const cachedTags = loadTagsFromCache(containerId);
-      if (cachedTags) {
+      if (cachedTags && cachedTags.length > 0) {
+        console.log(`[DEBUG] Loading ${cachedTags.length} tags from cache for container ${containerId} (filter3EOnly: ${filter3EOnly})`);
         // Load from cache immediately
         setContainerTags(prev => {
           const newMap = new Map(prev);
@@ -103,8 +252,16 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
         // Still fetch fresh data in background (silently update cache)
         // Don't show loading indicator for background refresh
       } else if (containerTags.has(containerId)) {
-        // Already loaded in memory, don't reload
-        return;
+        // Already loaded in memory, but check if it matches current filter
+        const currentTags = containerTags.get(containerId) || [];
+        // If filter changed, we need to reload
+        // For now, just reload if cache miss
+        if (currentTags.length === 0) {
+          // Empty tags in memory, reload
+        } else {
+          // Tags in memory, but might be from different filter - reload to be safe
+          console.log(`[DEBUG] Tags in memory for ${containerId}, but reloading to ensure filter matches`);
+        }
       }
     }
 
@@ -121,7 +278,7 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
           containerId,
           accountId: containerAccountId, // Use the container's accountId
           credentialsPath,
-          filter3E: filter3EOnly,
+          filter3E: filter3EOnly, // true = show only 3E tags, false = show all tags
         }),
       });
 
@@ -137,6 +294,10 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
       }
 
       if (data.success && data.tags) {
+        console.log(`[DEBUG] Loaded ${data.tags.length} tags from API for container ${containerId} (filter3EOnly: ${filter3EOnly}, filter3E sent to API: ${filter3EOnly})`);
+        console.log(`[DEBUG] Tag names:`, data.tags.map((t: ContainerTag) => t.tagName));
+        console.log(`[DEBUG] Tags with 3E:`, data.tags.filter((t: ContainerTag) => t.tagName.includes('3E') || t.tagName.includes('Template')).map((t: ContainerTag) => t.tagName));
+        
         // For each tag, fetch repo version info and compare
         const tagsWithRepoInfo = await Promise.all(
           data.tags.map(async (tag: ContainerTag) => {
@@ -208,31 +369,78 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     }
   };
 
-  // When a container is expanded, load its tags
+  // When a container is expanded, load tags from cache first, then refresh metadata and tags
   useEffect(() => {
-    expandedContainers.forEach(containerId => {
-      loadTagsForContainer(containerId, false);
+    expandedContainers.forEach(async (containerId) => {
+      // Load tags from cache immediately (if available) - but only if cache matches current filter
+      // The cache key includes the filter value, so we should get the right cached data
+      const cachedTags = loadTagsFromCache(containerId);
+      if (cachedTags && cachedTags.length > 0) {
+        console.log(`[DEBUG] Loading ${cachedTags.length} cached tags for ${containerId} with filter3EOnly=${filter3EOnly}`);
+        setContainerTags(prev => {
+          const newMap = new Map(prev);
+          newMap.set(containerId, cachedTags);
+          return newMap;
+        });
+      }
+      
+      // Load container metadata (only once, not on every filter change)
+      await loadContainerMetadata(containerId, false); // Use cache if available
+      
+      // Only load tags if not in cache - no auto-refresh
+      if (!cachedTags || cachedTags.length === 0) {
+        loadTagsForContainer(containerId, false); // Will check cache first, then fetch if needed
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedContainers]); // Load tags when containers are expanded
+  }, [expandedContainers]); // Only reload when containers are expanded/collapsed, NOT on filter change
+
+  // Load container list from cache on mount
+  useEffect(() => {
+    const cached = loadContainerListFromCache();
+    if (cached && cached.length > 0) {
+      console.log(`Loaded ${cached.length} containers from cache`);
+      setContainerList(cached);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
+  // Reload cache when accountId or allAccounts changes
+  useEffect(() => {
+    const cached = loadContainerListFromCache();
+    if (cached && cached.length > 0) {
+      console.log(`Loaded ${cached.length} containers from cache (account/allAccounts changed)`);
+      setContainerList(cached);
+    } else {
+      // Clear container list if cache doesn't match current settings
+      setContainerList([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId, allAccounts]);
 
   // When filter changes, clear cache and reload tags for all expanded containers
   useEffect(() => {
     if (expandedContainers.size > 0) {
+      console.log(`[DEBUG] Filter changed to filter3EOnly=${filter3EOnly}, clearing cache and reloading`);
       // Clear in-memory cache
       setContainerTags(new Map());
-      // Clear localStorage cache for all expanded containers
+      // Clear localStorage cache for all expanded containers (both filter values)
       expandedContainers.forEach(containerId => {
         try {
-          const cacheKey = `gtm_tags_${accountId}_${containerId}_${!filter3EOnly}`; // Old filter value
-          localStorage.removeItem(cacheKey);
+          // Clear cache for both filter values (true and false) to ensure clean reload
+          const trueKey = `gtm_tags_${accountId}_${containerId}_true`;
+          const falseKey = `gtm_tags_${accountId}_${containerId}_false`;
+          localStorage.removeItem(trueKey);
+          localStorage.removeItem(falseKey);
+          console.log(`[DEBUG] Cleared cache keys: ${trueKey}, ${falseKey}`);
         } catch (error) {
           // Ignore cache clear errors
         }
       });
-      // Reload all expanded containers with new filter
+      // Reload all expanded containers with new filter (force reload to bypass cache)
       expandedContainers.forEach(containerId => {
-        loadTagsForContainer(containerId, true);
+        console.log(`[DEBUG] Force reloading tags for ${containerId} with filter3EOnly=${filter3EOnly}`);
+        loadTagsForContainer(containerId, true); // Force reload, bypass cache
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -294,7 +502,20 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
 
         if (data.success && data.containers) {
           console.log(`Loaded ${data.containers.length} containers from API`);
-          setContainerList(data.containers);
+          
+          // Load cached metadata for each container
+          const containersWithCache = data.containers.map((container: ContainerListItem) => {
+            const cached = loadContainerMetadataFromCache(container.containerId);
+            return {
+              ...container,
+              metadata: cached || undefined,
+              cachedAt: cached ? Date.now() : undefined,
+            };
+          });
+          
+          setContainerList(containersWithCache);
+          // Save to cache
+          saveContainerListToCache(containersWithCache);
           setError(''); // Clear any previous errors
           if (data.partial) {
             setError(`⚠️ Partial results: ${data.note || 'Some containers may be missing.'}`);
@@ -331,8 +552,31 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     setExpandedContainers(newExpanded);
   };
 
+  // Toggle tag selection for bulk update
+  const toggleTagSelection = (containerId: string, tagName: string) => {
+    setSelectedTags(prev => {
+      const newMap = new Map(prev);
+      const containerTags = newMap.get(containerId) || new Set<string>();
+      const newContainerTags = new Set(containerTags);
+      
+      if (newContainerTags.has(tagName)) {
+        newContainerTags.delete(tagName);
+      } else {
+        newContainerTags.add(tagName);
+      }
+      
+      if (newContainerTags.size === 0) {
+        newMap.delete(containerId);
+      } else {
+        newMap.set(containerId, newContainerTags);
+      }
+      
+      return newMap;
+    });
+  };
+
   // Update a tag in a container
-  const updateTag = async (containerId: string, tagName: string) => {
+  const updateTag = async (containerId: string, tagName: string, publish: boolean = true) => {
     // Get the tag to find the repo tag name
     const tags = containerTags.get(containerId) || [];
     const tag = tags.find(t => t.tagName === tagName);
@@ -361,19 +605,76 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
           accountId,
           credentialsPath,
           containerIds: [containerId],
+          publish,
         }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to update tag');
+        // Extract detailed error message
+        let errorMsg = data.error || 'Failed to update tag';
+        if (data.details) {
+          // Try to extract meaningful error from Python output
+          const details = String(data.details);
+          
+          // Look for the full error block (from ERROR: to the end of instructions)
+          const errorBlockMatch = details.match(/ERROR:.*?(?=\n\n\[|$)/s);
+          if (errorBlockMatch) {
+            // Extract the full error block, including all instructions
+            const fullErrorBlock = errorBlockMatch[0];
+            // Filter out debug lines but keep all error and instruction lines
+            const errorLines = fullErrorBlock.split('\n').filter((line: string) => 
+              line.trim() && 
+              !line.includes('FutureWarning') &&
+              !line.includes('warnings.warn') &&
+              !line.includes('[DEBUG]')
+            );
+            if (errorLines.length > 0) {
+              errorMsg = errorLines.join('\n'); // Show all error lines (not just first 5)
+            }
+          } else {
+            // Fallback: extract error lines
+            const errorLines = details.split('\n').filter((line: string) => 
+              line.trim() && 
+              !line.includes('FutureWarning') &&
+              !line.includes('warnings.warn') &&
+              !line.includes('[DEBUG]') &&
+              (line.includes('Error') || line.includes('ERROR') || line.includes('Traceback') || 
+               line.includes('Exception') || line.includes('Failed') || line.includes('❌') ||
+               line.includes('⚠️') || line.includes('REQUIRED FIX') || line.includes('Also verify'))
+            );
+            if (errorLines.length > 0) {
+              errorMsg = errorLines.join('\n'); // Show all relevant error lines
+            } else {
+              errorMsg = `${errorMsg}\n\nDetails: ${details.substring(0, 1000)}`;
+            }
+          }
+        }
+        throw new Error(errorMsg);
       }
 
-      // Reload tags to get updated version
+      // Reload tags and metadata to get updated version
+      await loadContainerMetadata(containerId, true);
       await loadTagsForContainer(containerId, true);
+      
+      // Remove from selected tags if it was selected
+      setSelectedTags(prev => {
+        const newMap = new Map(prev);
+        const containerTags = newMap.get(containerId);
+        if (containerTags) {
+          const newContainerTags = new Set(containerTags);
+          newContainerTags.delete(tagName);
+          if (newContainerTags.size === 0) {
+            newMap.delete(containerId);
+          } else {
+            newMap.set(containerId, newContainerTags);
+          }
+        }
+        return newMap;
+      });
     } catch (err: any) {
-      setError(`Failed to update tag ${tagName} in ${containerId}: ${err.message}`);
+      setError(`Failed to update tag ${tagName} in ${containerId}:\n${err.message}`);
       console.error('Error updating tag:', err);
       
       // Remove updating flag on error
@@ -386,6 +687,19 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
         newMap.set(containerId, updatedTags);
         return newMap;
       });
+    }
+  };
+
+  // Update multiple selected tags in a container
+  const updateSelectedTags = async (containerId: string) => {
+    const selected = selectedTags.get(containerId);
+    if (!selected || selected.size === 0) return;
+
+    const tagsToUpdate = Array.from(selected);
+    
+    // Update all selected tags sequentially (to avoid rate limiting issues)
+    for (const tagName of tagsToUpdate) {
+      await updateTag(containerId, tagName, true); // Update and publish each tag
     }
   };
 
@@ -504,6 +818,7 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
               const isExpanded = expandedContainers.has(container.containerId);
               const isLoadingTags = loadingTags.has(container.containerId);
               const tags = containerTags.get(container.containerId) || [];
+              const updatableTagsCount = tags.filter(t => t.needsUpdate).length;
               
               return (
                 <div key={container.containerId} className="border-b border-gray-200 last:border-b-0">
@@ -545,7 +860,83 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                         </div>
                       </div>
                     </button>
+                    
+                    {/* Refresh Container Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        loadContainerMetadata(container.containerId, true);
+                      }}
+                      disabled={loadingMetadata.has(container.containerId)}
+                      className="h-8 text-xs flex-shrink-0"
+                      title="Refresh container metadata"
+                    >
+                      {loadingMetadata.has(container.containerId) ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                    </Button>
                   </div>
+                  
+                  {/* Container Metadata Info */}
+                  {container.metadata && (
+                    <div className="px-4 pb-2 text-xs text-gray-600 space-y-1">
+                      <div className="flex items-center gap-4 flex-wrap">
+                        {/* Permissions */}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">Permissions:</span>
+                          <div className="flex items-center gap-1">
+                            {container.metadata.permissions.canRead && (
+                              <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs">Read</span>
+                            )}
+                            {container.metadata.permissions.canEdit && (
+                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">Edit</span>
+                            )}
+                            {container.metadata.permissions.canPublish && (
+                              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">Publish</span>
+                            )}
+                            {!container.metadata.permissions.canRead && !container.metadata.permissions.canEdit && !container.metadata.permissions.canPublish && (
+                              <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs">No Access</span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Cached Date */}
+                        {container.cachedAt && (
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium">Cached:</span>
+                            <span>{new Date(container.cachedAt).toLocaleDateString()}</span>
+                          </div>
+                        )}
+                        
+                        {/* Last Updated (if available) */}
+                        {container.metadata.lastUpdated && (
+                          <div className="flex items-center gap-1">
+                            <span className="font-medium">Last Updated:</span>
+                            <span>
+                              {(() => {
+                                // Try to parse as timestamp (milliseconds)
+                                const lastUpdated = container.metadata.lastUpdated;
+                                if (typeof lastUpdated === 'string' && /^\d+$/.test(lastUpdated)) {
+                                  const timestamp = parseInt(lastUpdated, 10);
+                                  // Check if it's a reasonable timestamp (after 2000-01-01)
+                                  if (timestamp > 946684800000) {
+                                    return new Date(timestamp).toLocaleDateString();
+                                  }
+                                }
+                                // If it's already a date string, return as-is
+                                return lastUpdated;
+                              })()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   
                   {isExpanded && (
                     <div className="bg-gray-50 px-4 pb-4">
@@ -583,7 +974,84 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                         </div>
                       ) : !isLoadingTags && tags.length > 0 ? (
                         <div className="space-y-2">
-                          {[...tags].sort((a, b) => a.tagName.localeCompare(b.tagName)).map((tag, idx) => (
+                          {/* Bulk Update Button */}
+                          {(() => {
+                            const selected = selectedTags.get(container.containerId);
+                            const selectedCount = selected?.size || 0;
+                            const hasSelected = selectedCount > 0;
+                            const hasUpdatableTags = tags.some(t => t.needsUpdate);
+                            const updatableCount = tags.filter(t => t.needsUpdate).length;
+                            
+                            // Only show bulk update controls if there are multiple updatable tags
+                            if (!hasUpdatableTags || updatableCount <= 1) return null;
+                            
+                            return (
+                              <div className="flex items-center justify-between mb-3 pb-3 border-b border-gray-300">
+                                <div className="flex items-center gap-2">
+                                  <Checkbox
+                                    checked={hasSelected && selectedCount === tags.filter(t => t.needsUpdate).length}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        // Select all updatable tags
+                                        const updatableTags = tags.filter(t => t.needsUpdate).map(t => t.tagName);
+                                        setSelectedTags(prev => {
+                                          const newMap = new Map(prev);
+                                          newMap.set(container.containerId, new Set(updatableTags));
+                                          return newMap;
+                                        });
+                                      } else {
+                                        // Deselect all
+                                        setSelectedTags(prev => {
+                                          const newMap = new Map(prev);
+                                          newMap.delete(container.containerId);
+                                          return newMap;
+                                        });
+                                      }
+                                    }}
+                                    id={`select-all-${container.containerId}`}
+                                  />
+                                  <label 
+                                    htmlFor={`select-all-${container.containerId}`} 
+                                    className="text-sm text-gray-700 cursor-pointer"
+                                  >
+                                    Select all updatable tags
+                                  </label>
+                                </div>
+                                {hasSelected && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      updateSelectedTags(container.containerId);
+                                    }}
+                                    disabled={tags.some(t => selected?.has(t.tagName) && t.updating)}
+                                    className="h-8 text-xs whitespace-nowrap bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold border-0"
+                                    title={`Update and publish ${selectedCount} selected tag${selectedCount !== 1 ? 's' : ''}`}
+                                  >
+                                    <Upload className="h-3 w-3 mr-1" />
+                                    Update & Publish Selected ({selectedCount})
+                                  </Button>
+                                )}
+                              </div>
+                            );
+                          })()}
+                          {[...tags].sort((a, b) => {
+                            // Helper function to check if tag is managed (3E_ or Template)
+                            const isManaged = (tagName: string) => 
+                              tagName.startsWith('3E_') || tagName.startsWith('Template');
+                            
+                            const aManaged = isManaged(a.tagName);
+                            const bManaged = isManaged(b.tagName);
+                            
+                            // Managed tags first
+                            if (aManaged && !bManaged) return -1;
+                            if (!aManaged && bManaged) return 1;
+                            
+                            // Within same group, sort alphabetically
+                            return a.tagName.localeCompare(b.tagName);
+                          }).map((tag, idx) => (
                             <div
                               key={idx}
                               className={`bg-white border rounded-md p-3 ${
@@ -592,78 +1060,112 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                                   : tag.needsUpdate 
                                   ? 'border-yellow-300 bg-yellow-50' 
                                   : 'border-gray-200'
-                              }`}
+                              } ${selectedTags.get(container.containerId)?.has(tag.tagName) ? 'ring-2 ring-blue-400' : ''}`}
                             >
-                              <div className="flex items-center justify-between gap-4">
-                                {/* Tag Name */}
-                                <div className="flex-shrink-0 w-48">
+                              <div className="flex items-center gap-4">
+                                {/* Left Side: Tag Name */}
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
                                   <div className="font-medium text-sm text-gray-900 truncate" title={tag.tagName}>
                                     {tag.tagName}
                                   </div>
                                 </div>
                                 
-                                {/* Versions - Horizontal Layout */}
-                                <div className="flex items-center gap-4 flex-1 min-w-0">
-                                  {tag.version && (
-                                    <div className="text-xs text-gray-600 whitespace-nowrap">
-                                      <span className="font-medium">Container:</span> <span className="font-semibold">{tag.version}</span>
-                                    </div>
-                                  )}
-                                  {tag.repoVersion && tag.repoVersion !== 'Unknown' && (
-                                    <div className="text-xs text-gray-600 whitespace-nowrap">
-                                      <span className="font-medium">Repo:</span> <span className="font-semibold">{tag.repoVersion}</span>
-                                    </div>
-                                  )}
-                                  
-                                  {/* Status Badge */}
-                                  {tag.isUpToDate && (
-                                    <div className="flex items-center gap-1 text-xs text-green-700 whitespace-nowrap">
-                                      <CheckCircle2 className="h-3 w-3" />
-                                      <span>Up to date</span>
-                                    </div>
-                                  )}
+                                {/* Right Side: Checkbox, Update Button, then Aligned Columns */}
+                                <div className="flex items-center justify-end gap-4 flex-shrink-0 ml-auto">
+                                  {/* Checkbox and Update Button (left side of right section) */}
                                   {tag.needsUpdate && (
-                                    <div className="flex items-center gap-1 text-xs text-yellow-700 whitespace-nowrap">
-                                      <AlertCircle className="h-3 w-3" />
-                                      <span>Update available</span>
-                                    </div>
-                                  )}
-                                  {(!tag.repoVersion || tag.repoVersion === 'Unknown') && (
-                                    <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
-                                      <AlertCircle className="h-3 w-3" />
-                                      <span>Not in repo</span>
-                                    </div>
-                                  )}
-                                </div>
-                                
-                                {/* Update Button */}
-                                {tag.needsUpdate && (
-                                  <div className="flex-shrink-0">
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        updateTag(container.containerId, tag.tagName);
-                                      }}
-                                      disabled={tag.updating}
-                                      className="h-8 text-xs whitespace-nowrap bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold border-0"
-                                    >
-                                      {tag.updating ? (
-                                        <>
-                                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                          Updating...
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Upload className="h-3 w-3 mr-1" />
-                                          Update
-                                        </>
+                                    <>
+                                      {updatableTagsCount > 1 && (
+                                        <Checkbox
+                                          checked={selectedTags.get(container.containerId)?.has(tag.tagName) || false}
+                                          onChange={() => toggleTagSelection(container.containerId, tag.tagName)}
+                                          id={`tag-${container.containerId}-${idx}`}
+                                          className="flex-shrink-0"
+                                        />
                                       )}
-                                    </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          updateTag(container.containerId, tag.tagName, true); // Update and publish
+                                        }}
+                                        disabled={tag.updating}
+                                        className="h-8 text-xs whitespace-nowrap bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold border-0 flex-shrink-0"
+                                        title="Update tag and publish to live"
+                                      >
+                                        {tag.updating ? (
+                                          <>
+                                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                            Updating...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Upload className="h-3 w-3 mr-1" />
+                                            Update & Publish
+                                          </>
+                                        )}
+                                      </Button>
+                                    </>
+                                  )}
+                                  {/* Status Column: Active/Paused */}
+                                  <div className="w-20 flex justify-center">
+                                    {tag.paused !== undefined && (
+                                      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+                                        tag.paused 
+                                          ? 'bg-gray-200 text-gray-700' 
+                                          : 'bg-green-100 text-green-700'
+                                      }`}>
+                                        {tag.paused ? 'Paused' : 'Active'}
+                                      </span>
+                                    )}
                                   </div>
-                                )}
+                                  
+                                  {/* Container Version Column */}
+                                  <div className="w-32 text-xs text-gray-600 whitespace-nowrap text-right">
+                                    {tag.version ? (
+                                      <>
+                                        <span className="font-medium">Container:</span> <span className="font-semibold">{tag.version}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Repo Version Column */}
+                                  <div className="w-32 text-xs text-gray-600 whitespace-nowrap text-right">
+                                    {tag.repoVersion && tag.repoVersion !== 'Unknown' ? (
+                                      <>
+                                        <span className="font-medium">Repo:</span> <span className="font-semibold">{tag.repoVersion}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </div>
+                                  
+                                  {/* Status Badge Column */}
+                                  <div className="w-32 flex justify-center">
+                                    {tag.isUpToDate && (
+                                      <div className="flex items-center gap-1 text-xs text-green-700 whitespace-nowrap">
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        <span>Up to date</span>
+                                      </div>
+                                    )}
+                                    {tag.needsUpdate && (
+                                      <div className="flex items-center gap-1 text-xs text-yellow-700 whitespace-nowrap">
+                                        <AlertCircle className="h-3 w-3" />
+                                        <span>Update available</span>
+                                      </div>
+                                    )}
+                                    {(!tag.repoVersion || tag.repoVersion === 'Unknown') && !tag.isUpToDate && !tag.needsUpdate && (
+                                      <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
+                                        <AlertCircle className="h-3 w-3" />
+                                        <span>Not in repo</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           ))}
