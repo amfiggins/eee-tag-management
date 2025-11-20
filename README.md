@@ -51,12 +51,16 @@ eee-tag-management/
 │   ├── gtm_tag_updater.py  # Main automation script
 │   ├── gtm_rate_limiter.py # Rate limiting utility
 │   ├── requirements-gtm.txt # Python dependencies
+│   ├── gtm-oauth-credentials.json # OAuth credentials (create this)
 │   └── *.md                # Automation documentation
 │
 ├── web/                     # Web interface (Next.js)
 │   ├── app/                # Next.js app directory
 │   ├── components/         # React components
-│   └── utils/              # Utilities
+│   └── utils/              # Utilities (including cache-manager)
+│
+├── .cache/                  # Server-side cache (auto-created)
+│   └── README.md           # Cache documentation
 │
 └── docs/                   # Documentation
     ├── GTM_TAG_UPDATER_SETUP.md
@@ -103,10 +107,19 @@ eee-tag-management/
    ```bash
    python gtm_tag_updater.py \
      --tag-name "3E_Pop-up" \
-     --script-file "../tags/ui/3E_Pop-up" \
+     --script-file "../tags/pop-up-solutions/3E_Pop-up" \
      --account-id "YOUR_ACCOUNT_ID" \
      --credentials "credentials.json" \
      --list-only
+   ```
+
+   Or verify a tag (read-only):
+   ```bash
+   python gtm_tag_updater.py \
+     --tag-name "3E_Pop-up" \
+     --account-id "YOUR_ACCOUNT_ID" \
+     --credentials "credentials.json" \
+     --verify
    ```
 
 ## Tag Categories
@@ -160,8 +173,23 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 
 - Tag versions are tracked in file headers
 - Use automation tools to push updates across containers
-- Always test with `--list-only` or `--dry-run` before deploying
+- Always test with `--list-only`, `--verify`, or `--dry-run` before deploying
 - Web interface shows version comparison automatically
+- Container versions are created with descriptive names and notes for traceability
+- Use `--list-versions` to view all container versions
+- Use `--publish-version` to publish a specific version
+
+## Caching System
+
+The application uses **server-side caching** for improved performance:
+- Cache files stored in `.cache/` directory (JSON format)
+- Shared across all users for faster access
+- 12-month cache duration
+- Cache types: tag search results, container lists, container metadata, container tags
+- Cache files are tracked in git (commit and push to share with team)
+- Delete cache files to force fresh data
+
+See [`.cache/README.md`](.cache/README.md) for cache management details.
 
 ## Contributing
 

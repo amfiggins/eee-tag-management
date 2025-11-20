@@ -39,6 +39,9 @@ export default function TagSearch({ accountId, credentialsPath, onSearchComplete
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [searchStatus, setSearchStatus] = useState<string>('');
 
+  // Note: Caching is now handled server-side via cache-manager.ts
+  // Cache files are stored in .cache/ directory and shared across all users
+
   // Load available tags on mount
   useEffect(() => {
     const loadTags = async () => {
@@ -121,15 +124,17 @@ export default function TagSearch({ accountId, credentialsPath, onSearchComplete
 
     setLoading(true);
     setError('');
-    setSearchStatus('Searching for tag in all containers... This may take a few minutes.');
-
+    
+    // For now, search for the first selected tag
+    // TODO: Support multiple tags in search
+    const tagName = Array.from(selectedTags)[0];
+    
+    // Note: Server-side caching is handled automatically by the API route
+    // If cache exists, the API will return it immediately; otherwise it will search and cache
+    setSearchStatus('Searching for tag in all containers... This may take several minutes for large container lists.');
+    console.log('Starting search for tag:', tagName);
+    
     try {
-      // For now, search for the first selected tag
-      // TODO: Support multiple tags in search
-      const tagName = Array.from(selectedTags)[0];
-      
-      console.log('Starting search for tag:', tagName);
-      
       const response = await fetch('/api/gtm/search', {
         method: 'POST',
         headers: {
@@ -154,7 +159,15 @@ export default function TagSearch({ accountId, credentialsPath, onSearchComplete
         throw new Error(errorMsg);
       }
 
-      setSearchStatus('');
+      // Cache is automatically saved by the API route
+      // Check if this was from cache
+      if (data.fromCache) {
+        setSearchStatus('Loaded from cache');
+        setTimeout(() => setSearchStatus(''), 2000);
+      } else {
+        setSearchStatus('');
+      }
+      
       onSearchComplete(data, Array.from(selectedTags));
     } catch (err: any) {
       // Show the full error message
@@ -272,7 +285,7 @@ export default function TagSearch({ accountId, credentialsPath, onSearchComplete
                         return (
                           <div
                             key={tag.name}
-                            className={`flex items-start gap-3 p-2 rounded-md border transition-colors ${
+                            className={`flex items-center gap-3 p-2 rounded-md border transition-colors ${
                               isSelected
                                 ? 'bg-yellow-50 border-yellow-300'
                                 : 'bg-white border-gray-200 hover:bg-gray-50'
@@ -281,7 +294,7 @@ export default function TagSearch({ accountId, credentialsPath, onSearchComplete
                             <Checkbox
                               checked={isSelected}
                               onChange={() => toggleTag(tag.name)}
-                              className="mt-1"
+                              className="flex-shrink-0"
                             />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
@@ -289,23 +302,33 @@ export default function TagSearch({ accountId, credentialsPath, onSearchComplete
                                   {tag.name}
                                 </span>
                                 {isSelected && (
-                                  <CheckCircle2 className="h-4 w-4 text-yellow-600" />
+                                  <CheckCircle2 className="h-4 w-4 text-yellow-600 flex-shrink-0" />
                                 )}
-                              </div>
-                              <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
-                                <span>
-                                  <span className="font-medium">Version:</span> {tag.version}
-                                </span>
-                                <span>•</span>
-                                <span>
-                                  <span className="font-medium">Updated:</span> {tag.dateUpdated}
-                                </span>
                               </div>
                               {tag.description && (
                                 <p className="text-xs text-gray-500 mt-1 line-clamp-1">
                                   {tag.description}
                                 </p>
                               )}
+                            </div>
+                            
+                            {/* Right Side Columns: Version and Last Updated */}
+                            <div className="flex items-center gap-4 flex-shrink-0">
+                              {/* Version Column */}
+                              <div className="w-28 text-xs text-gray-600 text-right">
+                                <div className="flex flex-col">
+                                  <span className="font-medium">Version:</span>
+                                  <span>{tag.version}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Last Updated Column */}
+                              <div className="w-32 text-xs text-gray-600 text-right">
+                                <div className="flex flex-col">
+                                  <span className="font-medium">Last Updated:</span>
+                                  <span>{tag.dateUpdated}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         );

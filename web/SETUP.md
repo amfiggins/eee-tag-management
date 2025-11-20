@@ -51,32 +51,68 @@ npm start
 
 ## Usage
 
-1. **Search for a tag:**
-   - Enter tag name (e.g., "3E_Pop-up")
-   - Click "Search"
-   - Wait for results (may take a minute for many containers)
+### Container Browser
 
-2. **Review results:**
+1. **Search Containers:**
+   - Click "Search Containers" to load all containers
+   - Use "All Accounts" checkbox to search across all accounts
+   - Filter by container ID or name using the search box
+
+2. **View Tags:**
+   - Expand a container to see its tags
+   - Tags show version comparison (Container vs. Repo)
+   - Outdated tags are highlighted in yellow
+
+3. **Update Tags:**
+   - Click "Update & Publish" on individual tags
+   - Or use bulk update: select multiple tags and click "Update & Publish Selected"
+   - Tags automatically refresh after successful update
+
+4. **Refresh Metadata:**
+   - Click refresh button on a container to reload metadata
+   - Gold refresh button indicates no cache (click to load)
+   - Use "Refresh All Containers" to refresh all at once
+
+### Tag Search
+
+1. **Select Tag:**
+   - Browse tags by category
+   - Use search box to filter tags
+   - Select one or more tags
+
+2. **Search:**
+   - Click "Search Selected Tags"
+   - Results load from cache if available (instant)
+   - First search may take several minutes for 200+ containers
+
+3. **Review Results:**
    - See which containers have the tag
    - View version numbers
-   - See which are outdated
-
-3. **Select containers:**
-   - Check boxes next to containers you want to update
-   - Use "Select All Outdated" to quickly select outdated containers
-
-4. **Update:**
-   - Click "Update Selected"
-   - Confirm the update
-   - Wait for completion
+   - Navigate to container browser for updates
 
 ## Features
 
-- ✅ Tag search across all containers
+### Container Browser
+- ✅ Container search and filtering
+- ✅ Multi-account support (search all accounts or specific account)
+- ✅ Tag management with version comparison
+- ✅ Organized column layout (Container ID, Account ID, Cached, Last Updated)
+- ✅ Bulk operations (refresh all containers, update multiple tags)
+- ✅ Visual cache indicators (gold refresh button = no cache)
+- ✅ Auto-refresh after updates
+
+### Tag Search
+- ✅ Tag selection by category
+- ✅ Cross-container search
 - ✅ Version detection and comparison
-- ✅ Container filtering (search, status)
-- ✅ Bulk updates
-- ✅ Smart selection (select all outdated)
+- ✅ Organized column layout (Version, Last Updated)
+- ✅ Server-side caching for fast results
+
+### Performance
+- ✅ Server-side caching (JSON files in `.cache/` directory)
+- ✅ Shared cache across all users
+- ✅ Extended timeouts (20 minutes for 200+ containers)
+- ✅ Automatic rate limiting
 
 ## Troubleshooting
 
@@ -93,10 +129,14 @@ npm start
 - The script automatically handles rate limiting with delays
 - Increase `--delay` if you see many 429 errors
 
-## Next Steps
+## Caching
 
-- Add container browser view
-- Add update history
-- Add version comparison view
-- Add export functionality
+The web interface uses **server-side caching** for improved performance:
+- Cache files stored in `.cache/` directory (JSON format)
+- Shared across all users
+- 12-month cache duration
+- Cache is automatically managed by the API routes
+- Delete cache files in `.cache/` to force fresh data
+
+See [`.cache/README.md`](../.cache/README.md) for cache management details.
 

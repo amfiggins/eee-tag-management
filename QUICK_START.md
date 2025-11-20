@@ -59,20 +59,37 @@ Before using the web interface, you need:
 
 ## Using the Interface
 
-1. **Search for a tag:**
-   - Enter tag name (e.g., "3E_Pop-up")
-   - Click "Search"
-   - Wait for results
+### Container Browser (Recommended)
 
-2. **Review containers:**
+1. **Search Containers:**
+   - Click "Search Containers" to load all containers
+   - Use "All Accounts" to search across all accounts
+   - Filter by container ID or name
+
+2. **View Tags:**
+   - Expand a container to see its tags
+   - View version comparison (Container vs. Repo)
+   - Outdated tags are highlighted in yellow
+
+3. **Update Tags:**
+   - Click "Update & Publish" on individual tags
+   - Or select multiple tags and use bulk update
+   - Tags automatically refresh after update
+
+### Tag Search
+
+1. **Select Tag:**
+   - Browse tags by category
+   - Select a tag to search for
+
+2. **Search:**
+   - Click "Search Selected Tags"
+   - Results load from cache if available (instant)
+   - First search may take several minutes for 200+ containers
+
+3. **Review Results:**
    - See which containers have the tag
-   - View version numbers
-   - Identify outdated containers
-
-3. **Update tags:**
-   - Select containers to update
-   - Click "Update Selected"
-   - Confirm and wait for completion
+   - Navigate to container browser for updates
 
 ## Troubleshooting
 
@@ -93,9 +110,17 @@ Before using the web interface, you need:
 - Set up OAuth credentials (see `automation/OAUTH_SETUP.md`)
 - Ensure file is at `automation/gtm-oauth-credentials.json`
 
+## Performance Tips
+
+- **First Search**: May take several minutes for 200+ containers (20-minute timeout)
+- **Cached Results**: Subsequent searches load instantly from server-side cache
+- **Cache Location**: Cache files stored in `.cache/` directory (JSON format)
+- **Refresh Cache**: Delete cache files in `.cache/` to force fresh data
+
 ## Need Help?
 
 - See [Web Interface Setup](web/SETUP.md) for detailed instructions
 - See [Automation Setup](automation/README.md) for Python setup
 - See [OAuth Setup](automation/OAUTH_SETUP.md) for credentials
+- See [Documentation Index](docs/README.md) for all documentation
 

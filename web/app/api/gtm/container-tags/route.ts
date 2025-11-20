@@ -14,6 +14,7 @@ import { spawn } from 'child_process';
 import { join } from 'path';
 import { writeFileSync, existsSync, unlinkSync } from 'fs';
 import { findPythonExecutable } from '@/utils/python-executor';
+import { loadFromCache, saveToCache, CACHE_TYPES } from '@/utils/cache-manager';
 
 interface ContainerTag {
   tagId: string;
@@ -45,6 +46,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Check cache first
+    const cacheKey = `${accountId}_${containerId}_${filter3E === true || filter3E === 'true'}`;
+    const cachedTags = await loadFromCache<ContainerTag[]>(CACHE_TYPES.CONTAINER_TAGS, cacheKey);
+    
+    if (cachedTags) {
+      console.log(`[CACHE HIT] Returning cached tags for container ${containerId}`);
+      return NextResponse.json({
+        success: true,
+        containerId,
+        tags: cachedTags,
+        count: cachedTags.length,
+        fromCache: true,
+      });
+    }
+    
+    console.log(`[CACHE MISS] Fetching tags for container ${containerId}`);
 
     const pythonScript = join(process.cwd(), '..', 'automation', 'gtm_tag_updater.py');
     
@@ -192,11 +210,18 @@ except Exception as e:
             // Extract tags from result (could be direct array or in result.tags)
             const tags: ContainerTag[] = Array.isArray(result) ? result : (result.tags || []);
 
+            // Save to cache
+            saveToCache(CACHE_TYPES.CONTAINER_TAGS, cacheKey, tags).catch((cacheError) => {
+              console.error('Error saving tags to cache:', cacheError);
+              // Don't fail the request if cache save fails
+            });
+
             resolve(NextResponse.json({
               success: true,
               containerId,
               tags,
               count: tags.length,
+              fromCache: false,
             }));
           } catch (parseError: any) {
             resolve(NextResponse.json(

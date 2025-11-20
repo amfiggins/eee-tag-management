@@ -86,6 +86,66 @@ python gtm_tag_updater.py \
   --no-publish
 ```
 
+### Verify Tag (Read-Only)
+```bash
+python gtm_tag_updater.py \
+  --tag-name "3E_Pop-up" \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --verify \
+  --containers "31734165"
+```
+
+The `--verify` mode locates tags and displays information without making any changes:
+- Shows tag found status
+- Displays tag ID
+- Shows first 300 characters of HTML content
+- No workspace creation or updates performed
+
+### List Container Versions
+```bash
+python gtm_tag_updater.py \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --list-versions \
+  --containers "31734165"
+```
+
+Lists all versions for the specified container(s), sorted by version ID.
+
+### Publish Specific Version
+```bash
+python gtm_tag_updater.py \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --publish-version "123" \
+  --containers "31734165"
+```
+
+Publishes a specific container version by ID.
+
+### List All Containers (Discovery Mode)
+```bash
+python gtm_tag_updater.py \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --all-accounts
+```
+
+Lists all containers from all accounts the user has access to (read-only discovery mode).
+
+### Update Across All Accounts
+```bash
+python gtm_tag_updater.py \
+  --tag-name "3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --all-accounts
+```
+
+Updates the tag across all containers in all accessible accounts.
+
 ## Important Notes
 
 - **Tag Name Must Match Exactly**: The tag name in GTM must match exactly (case-sensitive)

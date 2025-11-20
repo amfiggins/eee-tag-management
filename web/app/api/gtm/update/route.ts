@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
     const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(fileTagName), fileTagName);
     const pythonScript = join(process.cwd(), '..', 'automation', 'gtm_tag_updater.py');
     
+    // Debug: Log the paths being used
+    console.log('[GTM Update API] Script file path:', scriptPath);
+    console.log('[GTM Update API] Python script path:', pythonScript);
+    console.log('[GTM Update API] Tag name:', tagName);
+    console.log('[GTM Update API] Repo tag name:', fileTagName);
+    console.log('[GTM Update API] Category:', getTagCategory(fileTagName));
+    
     // Fix credentials path - if it starts with "automation/", remove that since we're running from automation directory
     let fixedCredentialsPath = credentialsPath;
     if (credentialsPath.startsWith('automation/')) {
@@ -129,6 +136,10 @@ export async function POST(request: NextRequest) {
 
         // Parse results
         const results = parseUpdateOutput(stdout);
+        
+        // Debug: Log the full output for troubleshooting
+        console.log('[GTM Update API] Python script output:', stdout);
+        console.log('[GTM Update API] Parsed results:', results);
         
         resolve(NextResponse.json({
           success: true,

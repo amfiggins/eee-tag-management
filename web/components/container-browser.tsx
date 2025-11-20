@@ -63,6 +63,7 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
   const [loadingContainers, setLoadingContainers] = useState(false);
   const [loadingTags, setLoadingTags] = useState<Set<string>>(new Set()); // Set of container IDs loading tags
   const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(new Set()); // Set of container IDs loading metadata
+  const [refreshingAll, setRefreshingAll] = useState(false); // Track if we're refreshing all containers
   const [error, setError] = useState('');
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState('');
@@ -552,6 +553,34 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     setExpandedContainers(newExpanded);
   };
 
+  // Refresh all containers metadata
+  const refreshAllContainers = async () => {
+    if (containerList.length === 0) {
+      setError('No containers to refresh. Please search for containers first.');
+      return;
+    }
+
+    setRefreshingAll(true);
+    setError('');
+
+    try {
+      // Refresh all containers sequentially to avoid overwhelming the API
+      for (let i = 0; i < containerList.length; i++) {
+        const container = containerList[i];
+        await loadContainerMetadata(container.containerId, true);
+        // Small delay between requests to respect rate limits
+        if (i < containerList.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    } catch (err: any) {
+      setError(`Error refreshing containers: ${err.message}`);
+      console.error('Error refreshing all containers:', err);
+    } finally {
+      setRefreshingAll(false);
+    }
+  };
+
   // Toggle tag selection for bulk update
   const toggleTagSelection = (containerId: string, tagName: string) => {
     setSelectedTags(prev => {
@@ -654,9 +683,23 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
         throw new Error(errorMsg);
       }
 
-      // Reload tags and metadata to get updated version
+      // Small delay to ensure GTM has processed the update
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Reload tags and metadata to get updated version (bypass cache)
       await loadContainerMetadata(containerId, true);
       await loadTagsForContainer(containerId, true);
+      
+      // Clear updating flag on success
+      setContainerTags(prev => {
+        const newMap = new Map(prev);
+        const tags = newMap.get(containerId) || [];
+        const updatedTags = tags.map(tag => 
+          tag.tagName === tagName ? { ...tag, updating: false } : tag
+        );
+        newMap.set(containerId, updatedTags);
+        return newMap;
+      });
       
       // Remove from selected tags if it was selected
       setSelectedTags(prev => {
@@ -728,23 +771,45 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
 
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-semibold text-gray-900">Container Search</h2>
-        <Button
-          onClick={searchContainers}
-          disabled={loadingContainers}
-          className="bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold"
-        >
-          {loadingContainers ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Searching...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Search Containers
-            </>
+        <div className="flex items-center gap-2">
+          {containerList.length > 0 && (
+            <Button
+              onClick={refreshAllContainers}
+              disabled={refreshingAll || loadingContainers}
+              variant="outline"
+              className="text-gray-700"
+            >
+              {refreshingAll ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Refreshing All...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Refresh All Containers
+                </>
+              )}
+            </Button>
           )}
-        </Button>
+          <Button
+            onClick={searchContainers}
+            disabled={loadingContainers || refreshingAll}
+            className="bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold"
+          >
+            {loadingContainers ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Searching...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Search Containers
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 mb-4">
@@ -834,88 +899,63 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                         ) : (
                           <ChevronRight className="h-5 w-5 text-gray-600 flex-shrink-0" />
                         )}
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          {/* Container Name - Main, Bold */}
-                          {container.containerName ? (
-                            <div className="font-semibold text-base text-gray-900 truncate" title={container.containerName}>
-                              {container.containerName}
-                            </div>
-                          ) : (
-                            <div className="font-semibold text-base text-gray-900">
-                              {container.containerId}
-                            </div>
-                          )}
-                          {/* Container ID - Smaller, Not Bold */}
-                          {container.containerName && (
-                            <div className="font-mono text-xs text-gray-500 flex-shrink-0">
-                              ({container.containerId})
-                            </div>
-                          )}
-                          {/* Account ID - Show if different from primary account or if allAccounts is enabled */}
-                          {container.accountId && (allAccounts || container.accountId !== accountId) && (
-                            <div className="text-xs text-gray-400 flex-shrink-0">
-                              Account: {container.accountId}
-                            </div>
-                          )}
-                        </div>
+                        {/* Container Name - Main, Bold */}
+                        {container.containerName ? (
+                          <div className="font-semibold text-base text-gray-900 truncate" title={container.containerName}>
+                            {container.containerName}
+                          </div>
+                        ) : (
+                          <div className="font-semibold text-base text-gray-900">
+                            {container.containerId}
+                          </div>
+                        )}
                       </div>
                     </button>
                     
-                    {/* Refresh Container Button */}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        loadContainerMetadata(container.containerId, true);
-                      }}
-                      disabled={loadingMetadata.has(container.containerId)}
-                      className="h-8 text-xs flex-shrink-0"
-                      title="Refresh container metadata"
-                    >
-                      {loadingMetadata.has(container.containerId) ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </div>
-                  
-                  {/* Container Metadata Info */}
-                  {container.metadata && (
-                    <div className="px-4 pb-2 text-xs text-gray-600 space-y-1">
-                      <div className="flex items-center gap-4 flex-wrap">
-                        {/* Permissions */}
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">Permissions:</span>
-                          <div className="flex items-center gap-1">
-                            {container.metadata.permissions.canRead && (
-                              <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-xs">Read</span>
-                            )}
-                            {container.metadata.permissions.canEdit && (
-                              <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">Edit</span>
-                            )}
-                            {container.metadata.permissions.canPublish && (
-                              <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">Publish</span>
-                            )}
-                            {!container.metadata.permissions.canRead && !container.metadata.permissions.canEdit && !container.metadata.permissions.canPublish && (
-                              <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs">No Access</span>
-                            )}
-                          </div>
+                    {/* Right Side Columns: Container ID, Account ID, Cached, Last Updated, Refresh */}
+                    <div className="flex items-center gap-4 flex-shrink-0">
+                      {/* Container ID Column */}
+                      <div className="w-28 text-xs text-gray-600 text-right">
+                        <div className="flex flex-col">
+                          <span className="font-medium">Container ID:</span>
+                          <span className="font-mono">{container.containerId}</span>
                         </div>
-                        
-                        {/* Cached Date */}
-                        {container.cachedAt && (
-                          <div className="flex items-center gap-1">
+                      </div>
+                      
+                      {/* Account ID Column */}
+                      <div className="w-28 text-xs text-gray-600 text-right">
+                        {container.accountId && (allAccounts || container.accountId !== accountId) ? (
+                          <div className="flex flex-col">
+                            <span className="font-medium">Account ID:</span>
+                            <span>{container.accountId}</span>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            <span className="font-medium">Account ID:</span>
+                            <span className="text-gray-400">-</span>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Cached Date Column */}
+                      <div className="w-28 text-xs text-gray-600 text-right">
+                        {container.cachedAt ? (
+                          <div className="flex flex-col">
                             <span className="font-medium">Cached:</span>
                             <span>{new Date(container.cachedAt).toLocaleDateString()}</span>
                           </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            <span className="font-medium">Cached:</span>
+                            <span className="text-gray-400">-</span>
+                          </div>
                         )}
-                        
-                        {/* Last Updated (if available) */}
-                        {container.metadata.lastUpdated && (
-                          <div className="flex items-center gap-1">
+                      </div>
+                      
+                      {/* Last Updated Column */}
+                      <div className="w-32 text-xs text-gray-600 text-right">
+                        {container.metadata?.lastUpdated ? (
+                          <div className="flex flex-col">
                             <span className="font-medium">Last Updated:</span>
                             <span>
                               {(() => {
@@ -933,10 +973,41 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                               })()}
                             </span>
                           </div>
+                        ) : (
+                          <div className="flex flex-col">
+                            <span className="font-medium">Last Updated:</span>
+                            <span className="text-gray-400">-</span>
+                          </div>
                         )}
                       </div>
+                      
+                      {/* Refresh Button Column */}
+                      <div className="w-10 flex justify-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            loadContainerMetadata(container.containerId, true);
+                          }}
+                          disabled={loadingMetadata.has(container.containerId)}
+                          className={`h-8 text-xs flex-shrink-0 ${
+                            !container.cachedAt 
+                              ? 'bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold border-0' 
+                              : ''
+                          }`}
+                          title={!container.cachedAt ? "No cache - click to load metadata" : "Refresh container metadata"}
+                        >
+                          {loadingMetadata.has(container.containerId) ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
                     </div>
-                  )}
+                  </div>
                   
                   {isExpanded && (
                     <div className="bg-gray-50 px-4 pb-4">

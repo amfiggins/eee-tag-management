@@ -4,8 +4,8 @@ GTM Tag Updater Script
 Updates a specific tag across multiple Google Tag Manager containers.
 
     Author: Anthony Figgins
-    Version: 1.1.0
-    Date Updated: 2025-11-18
+    Version: 1.2.3
+    Date Updated: 2025-11-19
 
 Requirements:
 - Google Cloud Project with GTM API enabled
@@ -104,6 +104,11 @@ class GTMTagUpdater:
             print(f"[GTM DEBUG] Error while printing user permissions: {e}", flush=True)
         
         self._authenticated_user_email = None  # Cache the authenticated user email
+    
+    def _now_str(self) -> str:
+        """Get current timestamp as a formatted string."""
+        from datetime import datetime
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     def _api_call_with_retry(self, api_call, max_retries: int = 3):
         """
@@ -479,6 +484,32 @@ class GTMTagUpdater:
         
         return all_containers
     
+    def list_containers_for_account(self, account_id: str) -> List[Dict]:
+        """
+        List all containers for the given account and print them.
+        This must be READ-ONLY: no workspaces, no versions, no updates.
+        
+        Args:
+            account_id: Account ID to list containers for
+            
+        Returns:
+            List of container dicts with containerId, name, and accountId fields
+        """
+        containers = self.list_containers(account_id)
+        
+        if not containers:
+            print(f"Found 0 container(s) for account {account_id}")
+            return []
+        
+        print(f"Found {len(containers)} container(s) for account {account_id}")
+        print("Container list:")
+        for container in containers:
+            container_id = container.get('containerId', 'Unknown')
+            container_name = container.get('name', 'Unknown')
+            print(f"  - {container_id}: {container_name}")
+        
+        return containers
+    
     def get_container(self, container_id: str, account_id: Optional[str] = None) -> Optional[Dict]:
         """Get container details including fingerprint, last update date, and permissions."""
         target_account_id = account_id or self.account_id
@@ -678,6 +709,37 @@ class GTMTagUpdater:
         
         return metadata
     
+    def _find_container_account(self, container_id: str) -> Optional[str]:
+        """
+        Search all accounts to find which account contains the given container ID.
+        Returns the account ID if found, None otherwise.
+        """
+        try:
+            print(f"  🔍 Searching all accounts for container {container_id}...")
+            accounts = self.list_accounts()
+            if not accounts:
+                print(f"  ⚠️  Could not list accounts to search for container")
+                return None
+            
+            for account in accounts:
+                account_id = account.get('accountId', '')
+                account_name = account.get('name', 'Unknown')
+                try:
+                    containers = self.list_containers(account_id)
+                    for container in containers:
+                        if container.get('containerId') == container_id:
+                            print(f"  ✓ Found container {container_id} in account: {account_name} ({account_id})")
+                            return account_id
+                except Exception:
+                    # Skip accounts where we can't list containers
+                    continue
+            
+            print(f"  ⚠️  Container {container_id} not found in any accessible account")
+            return None
+        except Exception as e:
+            print(f"  ⚠️  Error searching for container account: {e}")
+            return None
+    
     def get_workspace(self, container_id: str, account_id: Optional[str] = None) -> Optional[str]:
         """Get the default workspace ID for a container."""
         target_account_id = account_id or self.account_id
@@ -693,12 +755,67 @@ class GTMTagUpdater:
                 workspace_list = workspaces.get('workspace', [])
                 if workspace_list:
                     return workspace_list[0]['workspaceId']
-            return None
-        except HttpError as e:
-            # Return None for permission errors (404/403) - let caller handle gracefully
-            if e.resp.status in [403, 404]:
+                else:
+                    print(f"  ⚠️  No workspaces found in container {container_id} (workspaces list is empty)")
+                    return None
+            else:
+                print(f"  ⚠️  No workspaces response for container {container_id} (response is None or empty)")
                 return None
-            print(f"ERROR: Failed to get workspace for container {container_id}: {e}")
+        except HttpError as e:
+            # Provide detailed diagnostics for permission errors
+            try:
+                content = e.content.decode("utf-8") if isinstance(e.content, bytes) else str(e.content)
+            except Exception:
+                content = str(e)
+            status = getattr(e.resp, "status", "unknown")
+            
+            if e.resp.status == 403:
+                print(f"  ❌ Permission denied (HTTP 403) when listing workspaces for container {container_id}")
+                print(f"  ⚠️  This usually means:")
+                print(f"      - You don't have 'View' or 'Edit' permission for this container")
+                print(f"      - The OAuth token may need to be refreshed")
+                print(f"      - The container may belong to a different account")
+                print(f"  📋 Error details: {content}")
+                print(f"  💡 TIP: Check your GTM permissions for container {container_id} in the GTM UI")
+                return None
+            elif e.resp.status == 404:
+                print(f"  ❌ Container {container_id} not found in account {target_account_id} (HTTP 404)")
+                print(f"  ⚠️  This usually means the container belongs to a different account")
+                
+                # Try to find which account the container actually belongs to
+                actual_account_id = self._find_container_account(container_id)
+                if actual_account_id:
+                    print(f"  💡 SOLUTION: Container {container_id} belongs to account {actual_account_id}, not {target_account_id}")
+                    print(f"  💡 Please use --account-id {actual_account_id} or update the account ID in your request")
+                    # Try again with the correct account
+                    try:
+                        workspaces = self._api_call_with_retry(
+                            self.service.accounts().containers().workspaces().list(
+                            parent=f'accounts/{actual_account_id}/containers/{container_id}'
+                            )
+                        )
+                        if workspaces:
+                            workspace_list = workspaces.get('workspace', [])
+                            if workspace_list:
+                                print(f"  ✓ Successfully retrieved workspace using correct account {actual_account_id}")
+                                return workspace_list[0]['workspaceId']
+                    except Exception as retry_e:
+                        print(f"  ⚠️  Could not retrieve workspace even with correct account: {retry_e}")
+                else:
+                    print(f"  ⚠️  Could not find container {container_id} in any accessible account")
+                    print(f"  📋 Error details: {content}")
+                    print(f"  💡 Please verify:")
+                    print(f"      - The container ID is correct")
+                    print(f"      - You have access to this container")
+                    print(f"      - The container exists in GTM")
+                return None
+            else:
+                print(f"  ❌ Failed to get workspace for container {container_id} (HTTP {status}): {content}")
+                return None
+        except Exception as e:
+            print(f"  ❌ Unexpected error getting workspace for container {container_id}: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def create_workspace(self, container_id: str, workspace_name: str, account_id: Optional[str] = None) -> Optional[str]:
@@ -731,6 +848,42 @@ class GTMTagUpdater:
         except HttpError as e:
             print(f"ERROR: Failed to create workspace for container {container_id}: {e}")
             return None
+    
+    def sync_workspace(self, container_id: str, workspace_id: str, account_id: Optional[str] = None) -> bool:
+        """
+        Sync a workspace with the latest published version.
+        This updates all unmodified entities in the workspace to match the latest container version.
+        
+        Args:
+            container_id: Container ID
+            workspace_id: Workspace ID to sync
+            account_id: Optional account ID (if different from the initialized account)
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        target_account_id = account_id or self.account_id
+        workspace_path = f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
+        try:
+            self._api_call_with_retry(
+                self.service.accounts().containers().workspaces().sync(
+                    path=workspace_path
+                )
+            )
+            print(f"  ✓ Synced workspace {workspace_id} with latest published version")
+            return True
+        except HttpError as e:
+            try:
+                content = e.content.decode("utf-8") if isinstance(e.content, bytes) else str(e.content)
+            except Exception:
+                content = str(e)
+            status = getattr(e.resp, "status", "unknown")
+            print(f"  ⚠️  Failed to sync workspace {workspace_id} (HTTP {status}): {content}")
+            # Don't treat sync failure as a hard error - the publish was successful
+            return False
+        except Exception as e:
+            print(f"  ⚠️  Unexpected error syncing workspace {workspace_id}: {e}")
+            return False
     
     def delete_workspace(self, container_id: str, workspace_id: str, account_id: Optional[str] = None) -> bool:
         """
@@ -829,233 +982,180 @@ class GTMTagUpdater:
             return False
     
     def create_version(self, container_id: str, workspace_id: str, account_id: Optional[str] = None, tag_name: Optional[str] = None) -> Optional[str]:
-        """Create a new container version from workspace.
+        """Create a container version from the given workspace and return its ID.
+
+        Returns:
+            containerVersionId as a string on success, or None on failure.
+        """
+        from typing import Optional
+        from googleapiclient.errors import HttpError
+
+        target_account_id = account_id or self.account_id
+        workspace_path = f"accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}"
+        name = f"Tag Update - {tag_name}" if tag_name else "Tag Update"
+        notes = (
+            f"Automated update for tag '{tag_name}' at {self._now_str()}"
+            if tag_name
+            else f"Automated update at {self._now_str()}"
+        )
+
+        body = {
+            "name": name,
+            "notes": notes,
+        }
+
+        print("[GTM DEBUG] Creating version:")
+        print(f"    workspace_path: {workspace_path}")
+        print("    HTTP POST")
+        print(f"    body = {body}")
+
+        try:
+            # IMPORTANT: use 'path=' (not 'parent=') and go through _api_call_with_retry
+            response = self._api_call_with_retry(
+                self.service
+                    .accounts()
+                    .containers()
+                    .workspaces()
+                    .create_version(
+                        path=workspace_path,
+                        body=body,
+                    )
+            )
+        except HttpError as e:
+            # Real failure from the API
+            try:
+                content = e.content.decode("utf-8") if isinstance(e.content, bytes) else str(e.content)
+            except Exception:
+                content = str(e)
+            status = getattr(e.resp, "status", "unknown")
+            print(
+                f"ERROR: Failed to create version for workspace {workspace_id} "
+                f"(HTTP {status}): {content}"
+            )
+            return None
+        except Exception as e:
+            # Any other unexpected failure on our side
+            print(f"ERROR: Unexpected error creating version for workspace {workspace_id}: {e}")
+            return None
+
+        if not response:
+            print("WARNING: create_version returned no response object.")
+            return None
+
+        version = response.get("containerVersion", {})
+        version_id = version.get("containerVersionId")
+
+        print("[GTM DEBUG] create_version response:")
+        print(f"    containerVersionId: {version_id}")
+        print(f"    name: {version.get('name')!r}")
+        print(f"    notes: {version.get('notes')!r}")
+
+        if not version_id:
+            # Still treat as success, but warn and let caller decide what to do
+            print(
+                "WARNING: create_version returned no containerVersionId. "
+                "Version was likely created, but ID is missing from response."
+            )
+            return None
+
+        print(f"[GTM DEBUG] Successfully created version {version_id} from workspace {workspace_id}")
+        return version_id
+    
+    def publish_version(self, container_id: str, version_id: str, account_id: Optional[str] = None) -> bool:
+        """
+        Publish a specific container version.
         
         Args:
             container_id: Container ID
-            workspace_id: Workspace ID
-            account_id: Optional account ID
-            tag_name: Optional tag name to include in version name/description
+            version_id: Version ID to publish
+            account_id: Optional account ID (if different from the initialized account)
+        
+        Returns:
+            True if the publish API call succeeds (no exception raised), False otherwise.
         """
+        from googleapiclient.errors import HttpError
+
         target_account_id = account_id or self.account_id
+        path = f"accounts/{target_account_id}/containers/{container_id}/versions/{version_id}"
+        print(f"\n[GTM DEBUG] Publishing version {version_id} for container {container_id}")
+        print(f"[GTM DEBUG]   path: {path}")
+
         try:
-            # First, verify we can access the workspace (this tests basic permissions)
-            try:
-                workspace = self._api_call_with_retry(
-                    self.service.accounts().containers().workspaces().get(
-                        path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
-                    )
-                )
-                if not workspace:
-                    print(f"ERROR: Cannot access workspace {workspace_id} - permission denied")
-                    return None
-            except HttpError as e:
-                if e.resp.status == 403:
-                    print(f"ERROR: Cannot access workspace {workspace_id} - permission denied")
-                    print(f"  This suggests you don't have edit permissions on this container in GTM.")
-                    print(f"  Even with correct OAuth scopes, you need to be granted access in GTM itself.")
-                    print(f"  Check: https://tagmanager.google.com/ - ensure you have 'Edit' permissions on container {container_id}")
-                    return None
-                raise
-            
-            # Note: We skip the API test here since it's already done during service initialization
-            # If we got this far, the API is accessible for read operations
-            
-            # Build the path for create_version endpoint
-            # POST https://tagmanager.googleapis.com/tagmanager/v2/{path}:create_version
-            # path format: accounts/{accountId}/containers/{containerId}/workspaces/{workspaceId}
-            full_path = f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
-            
-            # Build version body with name and notes
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            version_body = {
-                "name": f"Tag Update - {tag_name}" if tag_name else "Tag Update",
-                "notes": f"Automated update for tag '{tag_name}' at {timestamp}" if tag_name else f"Automated update at {timestamp}"
-            }
-            
-            # Log the request details
-            print(f"[GTM DEBUG] Creating version:", flush=True)
-            print(f"[GTM DEBUG]   full_path: {full_path}", flush=True)
-            print(f"[GTM DEBUG]   HTTP POST", flush=True)
-            print(f"[GTM DEBUG]   body = {version_body}", flush=True)
-            
-            try:
-                response = self._api_call_with_retry(
-                    self.service.accounts().containers().workspaces().create_version(
-                        path=full_path,
-                        body=version_body
-                    )
-                )
-                if response:
-                    version_id = response.get('containerVersionId')
-                    if version_id:
-                        print(f"[GTM DEBUG] Version created successfully: {version_id}", flush=True)
-                    return version_id
-                return None
-            except HttpError as e:
-                # Log the full HTTP error details
-                error_content = e.content.decode("utf-8") if hasattr(e, "content") and isinstance(e.content, (bytes, bytearray)) else str(e)
-                print(f"[GTM DEBUG] RAW create_version HttpError: {error_content}", flush=True)
-                # Re-raise to preserve existing error handling
-                raise
-        except HttpError as e:
-            # Parse error content as JSON if possible
-            http_code = None
-            error_message = None
-            error_status = None
-            error_reasons = []
-            
-            # Get HTTP status code from response
-            http_code = e.resp.status if hasattr(e, 'resp') and hasattr(e.resp, 'status') else None
-            
-            try:
-                # Try to parse error content as JSON
-                if hasattr(e, "content") and e.content:
-                    error_content = e.content.decode("utf-8") if isinstance(e.content, (bytes, bytearray)) else str(e.content)
-                    try:
-                        error_json = json.loads(error_content)
-                        error_obj = error_json.get("error", {})
-                        error_message = error_obj.get("message")
-                        error_status = error_obj.get("status")
-                        errors_list = error_obj.get("errors", [])
-                        if errors_list and len(errors_list) > 0:
-                            error_reasons = [err.get("reason", "") for err in errors_list]
-                    except (json.JSONDecodeError, AttributeError):
-                        # If JSON parsing fails, fall back to string parsing
-                        pass
-            except Exception:
-                pass
-            
-            # Use HTTP status code if JSON parsing didn't provide status
-            if not error_status:
-                error_status = http_code
-            
-            # Handle "Workspace is already submitted" case (400 error)
-            if http_code == 400 and error_message and "Workspace is already submitted" in error_message:
-                print(f"[GTM DEBUG] Workspace is already submitted; treating create_version as a no-op for this workspace.", flush=True)
-                # Return special sentinel value to indicate soft success (version already exists)
-                return "ALREADY_SUBMITTED"
-            
-            # Only show "Permission denied" for actual permission errors
-            is_permission_error = (
-                http_code == 403 or 
-                "insufficientPermissions" in error_reasons or
-                (error_message and ("insufficient authentication scopes" in error_message.lower() or "insufficient permission" in error_message.lower()))
+            (
+                self.service
+                    .accounts()
+                    .containers()
+                    .versions()
+                    .publish(path=path)
+                    .execute()
             )
-            
-            if is_permission_error:
-                error_msg = str(e)
-                error_details = e.error_details if hasattr(e, 'error_details') else []
-                
-                # Check if it's an API not enabled error
-                if 'API not enabled' in error_msg or any('API_NOT_ENABLED' in str(d) for d in error_details):
-                    print(f"ERROR: Tag Manager API is not enabled in Google Cloud Console")
-                    print(f"")
-                    print(f"  REQUIRED FIX - Enable Tag Manager API:")
-                    print(f"    1. Go to: https://console.cloud.google.com/apis/library/tagmanager.googleapis.com")
-                    print(f"    2. Select project: eee-tag-management")
-                    print(f"    3. Click 'ENABLE' button")
-                    print(f"    4. Wait for API to enable (may take 1-2 minutes)")
-                    print(f"    5. Try the update again")
-                else:
-                    print(f"ERROR: Permission denied when creating version")
-                    print(f"  OAuth scopes are correct and API is enabled, but GTM is rejecting the request.")
-                    print(f"")
-                    
-                    # Try to identify the authenticated user
-                    authenticated_user = "Unknown"
-                    try:
-                        # First, try to use cached email from initialization
-                        if hasattr(self, '_authenticated_user_email') and self._authenticated_user_email:
-                            authenticated_user = self._authenticated_user_email
-                        elif hasattr(self.service._http, 'credentials'):
-                            creds = self.service._http.credentials
-                            if hasattr(creds, 'service_account_email'):
-                                authenticated_user = creds.service_account_email
-                            else:
-                                # Try to get OAuth user email using helper method
-                                email = self._get_oauth_user_email(creds, self.credentials_path)
-                                if email:
-                                    authenticated_user = email
-                    except:
-                        pass
-                    
-                    print(f"  Authenticated User: {authenticated_user}")
-                    print(f"  Container ID: {container_id}")
-                    print(f"  Account ID: {target_account_id}")
-                    print(f"  Workspace ID: {workspace_id}")
-                    print(f"")
-                    print(f"  ROOT CAUSE: The 'create_version' operation requires 'Publish' permission in GTM.")
-                    print(f"  Even with correct OAuth scopes, you must have 'Publish' access at the container level.")
-                    print(f"")
-                    print(f"  REQUIRED FIX - Grant Publish Permission in GTM:")
-                    print(f"    1. Go to: https://tagmanager.google.com/")
-                    print(f"    2. Select container {container_id}")
-                    print(f"    3. Click 'Admin' (gear icon) in the top menu")
-                    print(f"    4. Click 'User Management'")
-                    print(f"    5. Find the account: {authenticated_user}")
-                    print(f"    6. Ensure permission is set to 'Publish' (not just 'Edit')")
-                    print(f"    7. Click 'Save'")
-                    print(f"    8. Try the update again")
-                    print(f"")
-                    print(f"  NOTE: 'Edit' permission is NOT sufficient for creating versions.")
-                    print(f"        You MUST have 'Publish' permission to use create_version API.")
-                    print(f"")
-                    print(f"  DIAGNOSTIC: Verify the container belongs to account {target_account_id}")
-                    print(f"             If the container is in a different account, ensure {authenticated_user}")
-                    print(f"             has 'Publish' permission in that account's container.")
-                    print(f"")
-                    print(f"  IMPORTANT: If you recently granted 'Publish' permission, the OAuth token may need")
-                    print(f"             to be refreshed. Try deleting token.json and re-authenticating:")
-                    print(f"             1. Delete: automation/token.json")
-                    print(f"             2. Re-run the update - it will prompt you to re-authenticate")
-                    print(f"             3. Grant all requested permissions when prompted")
-                    print(f"")
-                    print(f"  Also verify OAuth consent screen (if still having issues):")
-                    print(f"    1. Go to: https://console.cloud.google.com/apis/credentials/consent")
-                    print(f"    2. Ensure {authenticated_user} is in 'Test users' (if app is in Testing mode)")
-                    print(f"    3. Or publish the app if you want broader access")
-                    print(f"")
-                    print(f"  Current token scopes: {getattr(self.service._http.credentials, 'scopes', 'Unknown') if hasattr(self.service._http, 'credentials') else 'Unknown'}")
-                    print(f"  Required scopes: {self.SCOPES}")
-                    print(f"")
-                    print(f"  Full error details: {error_details}")
-            else:
-                # For non-permission errors, show accurate error message without claiming it's a permission error
-                error_msg_display = error_message if error_message else str(e)
-                print(f"ERROR: Failed to create version (HTTP {http_code}, status {error_status}): {error_msg_display}")
-                if error_reasons:
-                    print(f"  Error reasons: {', '.join(error_reasons)}")
-            return None
-    
-    def publish_version(self, container_id: str, version_id: str, account_id: Optional[str] = None) -> bool:
-        """Publish a container version."""
-        target_account_id = account_id or self.account_id
-        try:
-            self._api_call_with_retry(
-            self.service.accounts().containers().versions().publish(
-                path=f'accounts/{target_account_id}/containers/{container_id}/versions/{version_id}'
-                )
-            )
+            # If we get here, the API call succeeded - treat as success
+            print(f"[GTM DEBUG] Published version {version_id} for container {container_id}")
             return True
         except HttpError as e:
-            if e.resp.status == 403:
-                error_msg = str(e)
-                if 'insufficient authentication scopes' in error_msg.lower() or 'insufficient permission' in error_msg.lower():
-                    print(f"ERROR: Permission denied - OAuth token missing required scopes")
-                    print(f"  Required scopes:")
-                    for scope in self.SCOPES:
-                        print(f"    - {scope}")
-                    print(f"  To fix:")
-                    print(f"    1. Delete the token.json file to force re-authentication")
-                    print(f"    2. Re-run the script - it will prompt you to re-authenticate")
-                    print(f"    3. Grant ALL requested permissions when prompted")
-                else:
-                    print(f"ERROR: Permission denied when publishing version: {e}")
-            else:
-                print(f"ERROR: Failed to publish version: {e}")
+            try:
+                content = e.content.decode("utf-8") if isinstance(e.content, bytes) else str(e.content)
+            except Exception:
+                content = str(e)
+            status = getattr(e.resp, "status", "unknown")
+            print(f"ERROR: Failed to publish version {version_id} for container {container_id} "
+                  f"(HTTP {status}): {content}")
             return False
+        except Exception as e:
+            print(f"ERROR: Unexpected error publishing version {version_id} for container {container_id}: {e}")
+            return False
+    
+    def list_versions(self, container_id: str) -> None:
+        """
+        List all container versions for a given container.
+        """
+        from googleapiclient.errors import HttpError
+
+        parent = f"accounts/{self.account_id}/containers/{container_id}"
+        print(f"\nContainer {container_id}:")
+
+        try:
+            versions = self._api_call_with_retry(
+                self.service.accounts().containers().versions().list(
+                    parent=parent
+                )
+            )
+        except HttpError as e:
+            # Show raw error to help debugging
+            try:
+                content = e.content.decode("utf-8") if isinstance(e.content, bytes) else str(e.content)
+            except Exception:
+                content = str(e)
+            status = getattr(e.resp, "status", "unknown")
+            print(f"  ERROR: Failed to list versions (HTTP {status}): {content}")
+            return
+        except Exception as e:
+            print(f"  ERROR: Unexpected error listing versions for container {container_id}: {e}")
+            return
+
+        if not versions:
+            print("  (no versions found)")
+            return
+
+        version_list = versions.get("containerVersion", [])
+        if not version_list:
+            print("  (no versions found)")
+            return
+
+        # Sort by numeric containerVersionId
+        def _version_key(v):
+            try:
+                return int(v.get("containerVersionId", "0"))
+            except Exception:
+                return 0
+
+        version_list = sorted(version_list, key=_version_key)
+
+        for v in version_list:
+            vid = v.get("containerVersionId", "(no id)")
+            name = v.get("name") or "(no name)"
+            notes = v.get("notes") or "(no notes)"
+            print(f"  - ID: {vid}, name: {name}, notes: {notes}")
     
     def list_all_tags(self, container_id: str, workspace_id: str) -> List[str]:
         """List all tag names in a container."""
@@ -1243,6 +1343,11 @@ class GTMTagUpdater:
             default_workspace_id = self.get_workspace(container_id, account_id=target_account_id)
             if not default_workspace_id:
                 print(f"  ❌ Could not get default workspace for {container_id}")
+                print(f"  ⚠️  Cannot proceed with tag update without workspace access")
+                print(f"  💡 Please check:")
+                print(f"      - Your GTM permissions for container {container_id}")
+                print(f"      - That the container ID is correct")
+                print(f"      - That you have at least 'View' permission for this container")
                 return False
             
             # Find tag in default workspace (read-only)
@@ -1284,13 +1389,7 @@ class GTMTagUpdater:
                 # Create version from the new workspace (include tag name for better traceability)
                 version_id = self.create_version(container_id, workspace_id, account_id=target_account_id, tag_name=tag_name)
                 
-                # Handle "Workspace is already submitted" as soft success
-                if version_id == "ALREADY_SUBMITTED":
-                    print(f"  ✓ Workspace already submitted (version already exists)")
-                    # Workspace is already submitted, so version exists - treat as success
-                    # Workspace will be automatically cleaned up by GTM
-                    workspace_id = None
-                elif not version_id:
+                if not version_id:
                     print(f"  ❌ Failed to create version")
                     # Check if it's a permission error and provide detailed help
                     try:
@@ -1311,31 +1410,40 @@ class GTMTagUpdater:
                     except Exception as e:
                         print(f"  ⚠️  Could not check token scopes: {e}")
                     return False
-                else:
-                    print(f"  ✓ Created version: {version_id}")
-                    
-                    # Publish version (workspace will be automatically removed after publishing)
-                    if not self.publish_version(container_id, version_id, account_id=target_account_id):
-                        print(f"  ❌ Failed to publish version")
-                        # Check if it's a permission error
-                        try:
-                            # Try to get workspace to see if we have access
-                            workspace = self._api_call_with_retry(
-                                self.service.accounts().containers().workspaces().get(
-                                    path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
-                                )
+                
+                print(f"  ✓ Created version: {version_id}")
+                
+                # Publish version (workspace will be automatically removed after publishing)
+                if not self.publish_version(container_id, version_id, account_id=target_account_id):
+                    print(f"  ❌ Failed to publish version")
+                    # Check if it's a permission error
+                    try:
+                        # Try to get workspace to see if we have access
+                        workspace = self._api_call_with_retry(
+                            self.service.accounts().containers().workspaces().get(
+                                path=f'accounts/{target_account_id}/containers/{container_id}/workspaces/{workspace_id}'
                             )
-                            if workspace:
-                                print(f"  ⚠️  Permission error: OAuth token missing required scopes")
-                                print(f"  ⚠️  Required scopes: {', '.join(self.SCOPES)}")
-                                print(f"  ⚠️  Please delete token.json and re-authenticate")
-                        except:
-                            pass
-                        return False
-                    
-                    print(f"  ✓ Version published successfully (workspace automatically removed)")
-                    # Workspace is automatically deleted by GTM after publishing, so clear our reference
-                    workspace_id = None
+                        )
+                        if workspace:
+                            print(f"  ⚠️  Permission error: OAuth token missing required scopes")
+                            print(f"  ⚠️  Required scopes: {', '.join(self.SCOPES)}")
+                            print(f"  ⚠️  Please delete token.json and re-authenticate")
+                    except:
+                        pass
+                    return False
+                
+                print(f"  ✓ Version published successfully (workspace automatically removed)")
+                # Workspace is automatically deleted by GTM after publishing, so clear our reference
+                workspace_id = None
+                
+                # Sync the default workspace with the latest published version
+                # This ensures the default workspace reflects the changes we just published
+                default_workspace_id = self.get_workspace(container_id, account_id=target_account_id)
+                if default_workspace_id:
+                    print(f"  🔄 Syncing default workspace {default_workspace_id} with published version...")
+                    self.sync_workspace(container_id, default_workspace_id, account_id=target_account_id)
+                else:
+                    print(f"  ⚠️  Could not get default workspace to sync (this is non-fatal)")
             else:
                 # If not publishing, we need to manually delete the workspace
                 # (though this shouldn't happen in normal operation)
@@ -1484,30 +1592,76 @@ Examples:
         help='Verify mode: locate tag, fetch it, and print tag info without making changes'
     )
     
+    parser.add_argument(
+        '--list-versions',
+        action='store_true',
+        help='List all container versions for the specified container(s) and exit'
+    )
+    
+    parser.add_argument(
+        '--publish-version',
+        type=str,
+        help='Publish the specified container version ID for the specified container(s) and exit'
+    )
+    
     args = parser.parse_args()
+    
+    # Determine --all-accounts mode: discovery vs update
+    is_all_accounts_discovery = (
+        args.all_accounts and
+        not args.tag_name and
+        not args.script_file
+    )
+    
+    is_all_accounts_update = (
+        args.all_accounts and
+        args.tag_name is not None and
+        args.script_file is not None
+    )
+    
+    # Helper: Determine if we're in a read-only mode that doesn't require tag-name or script-file
+    # Note: --all-accounts in discovery mode is read-only, but in update mode it's not
+    is_read_only_mode = (
+        args.list_only or
+        args.containers_only or
+        args.verify or
+        args.list_versions or
+        args.publish_version or
+        is_all_accounts_discovery  # Only discovery mode is read-only
+    )
     
     # Validate arguments
     if args.containers_only:
         # Containers-only mode doesn't need tag-name or script-file
         pass
-    elif args.verify:
-        # Verify mode requires tag-name but not script-file
-        if not args.tag_name:
-            print("ERROR: --tag-name is required when using --verify mode")
+    elif args.list_versions:
+        # List-versions mode requires containers but not tag-name or script-file
+        if not args.containers:
+            print("ERROR: --containers is required when using --list-versions mode")
             sys.exit(1)
-    elif not args.list_only and not args.script_file:
-        print("ERROR: --script-file is required unless using --list-only, --containers-only, or --verify mode")
-        sys.exit(1)
-    elif args.list_only and not args.tag_name:
-        print("ERROR: --tag-name is required when using --list-only mode")
-        sys.exit(1)
-    elif not args.containers_only and not args.list_only and not args.tag_name:
-        print("ERROR: --tag-name is required for update mode")
-        sys.exit(1)
+    elif args.publish_version:
+        # Publish-version mode requires containers but not tag-name or script-file
+        if not args.containers:
+            print("ERROR: --containers is required when using --publish-version mode")
+            sys.exit(1)
+        # For now, only support a single container ID
+        container_list = [c.strip() for c in args.containers.split(',')]
+        if len(container_list) > 1:
+            print("ERROR: --publish-version currently only supports a single container ID")
+            sys.exit(1)
+    # For update mode (NOT read-only), require both tag-name and script-file
+    # This includes multi-account update mode (is_all_accounts_update)
+    if not is_read_only_mode:
+        if not args.tag_name:
+            print("ERROR: --tag-name is required for update mode")
+            sys.exit(1)
+        if not args.script_file:
+            print("ERROR: --script-file is required for update mode")
+            sys.exit(1)
     
-    # If list-only, containers-only, or verify mode, script file is optional
+    # If in read-only mode, script file is optional
     script_content = None
-    if not args.list_only and not args.containers_only and not args.verify:
+    if not is_read_only_mode:
         # Read script content - handle relative paths from Tag Manager folder
         if not args.script_file:
             print("ERROR: --script-file is required for update mode")
@@ -1538,6 +1692,81 @@ Examples:
         traceback.print_exc()
         sys.exit(1)
     
+    # Determine --all-accounts mode: discovery vs update (re-evaluate after initialization)
+    is_all_accounts_discovery = (
+        args.all_accounts and
+        not args.tag_name and
+        not args.script_file
+    )
+    
+    is_all_accounts_update = (
+        args.all_accounts and
+        args.tag_name is not None and
+        args.script_file is not None
+    )
+    
+    # Handle discovery mode (read-only, just list containers)
+    if is_all_accounts_discovery:
+        containers = updater.list_containers_for_account(args.account_id)
+        print(f"\n{'='*60}")
+        print(f"Discovery complete: Found {len(containers)} container(s) for account {args.account_id}")
+        print(f"{'='*60}")
+        sys.exit(0)
+    
+    # Handle list-versions mode
+    if args.list_versions:
+        if not args.containers:
+            print("ERROR: --containers is required when using --list-versions mode")
+            sys.exit(1)
+        
+        # Parse container IDs
+        container_ids = [c.strip() for c in args.containers.split(',')]
+        # Extract container ID from GTM-XXXXX format if needed
+        container_ids = [c.replace('GTM-', '') if c.startswith('GTM-') else c for c in container_ids]
+        
+        print(f"\n[Listing versions for {len(container_ids)} container(s)...]\n")
+        
+        for container_id in container_ids:
+            updater.list_versions(container_id)
+        
+        print(f"\n{'='*60}")
+        print(f"Listed versions for {len(container_ids)} container(s)")
+        print(f"{'='*60}")
+        sys.exit(0)
+    
+    # Handle publish-version mode
+    if args.publish_version:
+        if not args.containers:
+            print("ERROR: --containers is required when using --publish-version mode")
+            sys.exit(1)
+        
+        # Parse container IDs (only one allowed)
+        container_ids = [c.strip() for c in args.containers.split(',')]
+        # Extract container ID from GTM-XXXXX format if needed
+        container_ids = [c.replace('GTM-', '') if c.startswith('GTM-') else c for c in container_ids]
+        
+        if len(container_ids) > 1:
+            print("ERROR: --publish-version currently only supports a single container ID")
+            sys.exit(1)
+        
+        container_id = container_ids[0]
+        version_id = args.publish_version
+        
+        print(f"\n[Publishing version {version_id} for container {container_id}...]\n")
+        
+        success = updater.publish_version(container_id, version_id)
+        
+        if success:
+            print(f"\n{'='*60}")
+            print(f"✓ Successfully published version {version_id} for container {container_id}")
+            print(f"{'='*60}")
+            sys.exit(0)
+        else:
+            print(f"\n{'='*60}")
+            print(f"❌ Failed to publish version {version_id} for container {container_id}")
+            print(f"{'='*60}")
+            sys.exit(1)
+    
     # Get containers to update
     if args.containers:
         # Use specified containers
@@ -1548,9 +1777,11 @@ Examples:
     else:
         # Get all containers
         print("\nFetching all containers...")
-        if args.all_accounts:
+        if is_all_accounts_update:
+            # Multi-account update mode: list containers from all accounts
             containers = updater.list_all_containers()
         else:
+            # Single account mode: list containers from the specified account
             containers = updater.list_containers()
         if not containers:
             print("ERROR: No containers found or failed to list containers")

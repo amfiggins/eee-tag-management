@@ -29,9 +29,17 @@ The `gtm_tag_updater.py` script allows you to update tags across all GTM contain
 
 - ✅ **Automated Updates**: Update tags across all containers with one command
 - ✅ **Dry Run Mode**: Test updates before applying them
+- ✅ **Verify Mode**: Locate and display tag information without making changes
 - ✅ **Selective Updates**: Update specific containers or all containers
-- ✅ **Version Management**: Automatically creates and publishes container versions
-- ✅ **Error Handling**: Comprehensive error reporting and summary
+- ✅ **Multi-Account Support**: Search and update across all accounts with `--all-accounts`
+- ✅ **Version Management**: 
+  - Automatically creates and publishes container versions with descriptive names
+  - List all versions with `--list-versions`
+  - Publish specific versions with `--publish-version`
+- ✅ **Error Handling**: Comprehensive error reporting with improved diagnostics
+- ✅ **Workspace Isolation**: Creates isolated workspaces for each update to prevent conflicts
+- ✅ **Default Workspace Sync**: Automatically syncs default workspace after publishing
+- ✅ **Account Auto-Detection**: Automatically finds containers in the correct account if not found
 
 ## Documentation
 
@@ -52,9 +60,9 @@ The `gtm_tag_updater.py` script allows you to update tags across all GTM contain
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/ui/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "credentials.json"
+  --credentials "gtm-oauth-credentials.json"
 ```
 
 ### Update Specific Containers
@@ -62,10 +70,10 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/ui/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "credentials.json" \
-  --containers "GTM-XXXXX,GTM-YYYYY"
+  --credentials "gtm-oauth-credentials.json" \
+  --containers "31734165,48665705"
 ```
 
 ### Test Without Publishing
@@ -73,11 +81,28 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/ui/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
   --account-id "1234567" \
-  --credentials "credentials.json" \
+  --credentials "gtm-oauth-credentials.json" \
   --no-publish
 ```
+
+### Verify Tag (Read-Only)
+
+```bash
+python gtm_tag_updater.py \
+  --tag-name "3E_Pop-up" \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --verify \
+  --containers "31734165"
+```
+
+The `--verify` mode locates tags and displays information without making any changes:
+- Shows tag found status
+- Displays tag ID
+- Shows first 300 characters of HTML content
+- No workspace creation or updates performed
 
 ## Workflow
 

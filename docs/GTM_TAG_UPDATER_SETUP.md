@@ -164,26 +164,66 @@ python gtm_tag_updater.py \
   --no-publish
 ```
 
+### Verify Tag (Read-Only Mode)
+
+```bash
+python gtm_tag_updater.py \
+  --tag-name "3E_Pop-up" \
+  --account-id "1234567" \
+  --credentials "gtm-oauth-credentials.json" \
+  --verify
+```
+
+The `--verify` mode locates tags and displays information without making any changes:
+- Shows tag found status
+- Displays tag ID
+- Shows first 300 characters of HTML content
+- Uses default workspace (no new workspace created)
+- No updates or changes performed
+
 ## Command Line Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `--tag-name` | Yes | Name of the tag to update (must match exactly) |
-| `--script-file` | Yes | Path to the updated script file (relative to automation folder, e.g., "../tags/pop-up-solutions/3E_Pop-up") |
+| `--tag-name` | Yes* | Name of the tag to update (must match exactly). Not required for read-only modes. |
+| `--script-file` | Yes* | Path to the updated script file (relative to automation folder, e.g., "../tags/pop-up-solutions/3E_Pop-up"). Not required for read-only modes. |
 | `--account-id` | Yes | GTM Account ID (numeric) |
 | `--credentials` | Yes | Path to service account JSON or OAuth credentials |
-| `--containers` | No | Comma-separated list of container IDs (e.g., "GTM-XXXXX,GTM-YYYYY"). If omitted, updates all containers. |
+| `--containers` | No | Comma-separated list of container IDs (e.g., "GTM-XXXXX,GTM-YYYYY" or "31734165,48665705"). If omitted, updates all containers. |
 | `--dry-run` | No | Show what would be updated without making changes |
 | `--no-publish` | No | Update tags but don't publish versions (for testing) |
+| `--verify` | No | Verify mode: locate tag, fetch it, and print tag info without making changes |
+| `--list-only` | No | Only list containers and tags, do not attempt any updates |
+| `--containers-only` | No | Only list container IDs, do not search for tags |
+| `--list-versions` | No | List all container versions for specified container(s) and exit |
+| `--publish-version` | No | Publish a specific container version ID (requires `--containers`) |
+| `--all-accounts` | No | List containers from all accounts (discovery mode) or update across all accounts |
+| `--delay` | No | Delay in seconds between API calls (default: 1.1, minimum: 1.1) |
+| `--verbose` | No | Show detailed information including all tags found in containers |
+
+*Required depends on mode (see argument descriptions)
+
+### Read-Only Modes
+
+These modes do NOT require `--tag-name` or `--script-file`:
+- `--list-only`
+- `--containers-only`
+- `--verify`
+- `--list-versions`
+- `--publish-version`
+- `--all-accounts` (discovery mode only)
 
 ## How It Works
 
-1. **Authentication**: Connects to GTM API using provided credentials
-2. **Container Discovery**: Lists all containers (or uses specified ones)
-3. **Tag Search**: For each container, finds the tag by name in the default workspace
-4. **Tag Update**: Updates the tag's HTML content with the new script
-5. **Version Creation**: Creates a new container version with the changes
-6. **Publishing**: Publishes the version (unless `--no-publish` is used)
+1. **Authentication**: Connects to GTM API using provided credentials (OAuth or Service Account)
+2. **Container Discovery**: Lists all containers (or uses specified ones), with automatic account detection if container not found
+3. **Workspace Creation**: Creates a new workspace for each container to isolate changes
+4. **Tag Search**: For each container, finds the tag by name in the new workspace
+5. **Tag Update**: Updates the tag's HTML content with the new script
+6. **Version Creation**: Creates a new container version with descriptive name and notes
+7. **Publishing**: Publishes the version (unless `--no-publish` is used)
+8. **Default Workspace Sync**: Automatically syncs the default workspace with the published version
+9. **Cleanup**: Workspace is automatically removed after publishing (or manually deleted on error)
 
 ## Important Notes
 
@@ -195,20 +235,33 @@ python gtm_tag_updater.py \
 
 ### Workspace Handling
 
-- The script uses the **default workspace** (first workspace) in each container
-- If you need to update tags in a specific workspace, you'll need to modify the code
+- The script creates a **new workspace** for each update to isolate changes
+- Workspaces are automatically removed after successful publishing
+- If an error occurs, the workspace is manually deleted to prevent leftovers
+- The `--verify` mode uses the default workspace (read-only, no new workspace created)
 
 ### Version Management
 
-- Each update creates a new container version
+- Each update creates a new container version with descriptive name and notes
+- Version name format: `Tag Update - {tag_name}`
+- Version notes include: `Automated update for tag '{tag_name}' at {timestamp}`
 - Versions are automatically published unless `--no-publish` is used
 - Published versions are live immediately
+- Default workspace is automatically synced with published version after publishing
+- If a workspace is already submitted, the operation is treated as a soft success (version already exists)
+- Use `--list-versions` to view all versions for a container
+- Use `--publish-version` to publish a specific version by ID
 
 ### Error Handling
 
 - Containers without the specified tag are skipped (not an error)
 - Failed updates are reported but don't stop the process
 - Check the summary at the end for success/failure counts
+- Improved error messages distinguish between:
+  - Permission errors (403, insufficientPermissions)
+  - "Workspace already submitted" (treated as soft success)
+  - Other API errors (with accurate error messages)
+- Detailed diagnostic information is provided for permission issues
 
 ## Troubleshooting
 
@@ -222,7 +275,15 @@ python gtm_tag_updater.py \
 
 - Verify the tag name matches exactly (case-sensitive)
 - Check that the tag exists in the container's default workspace
-- Use `--dry-run` to see which containers have the tag
+- Use `--dry-run` or `--list-only` to see which containers have the tag
+- Use `--verify` to inspect tag content without making changes
+
+### "Container not found" (HTTP 404)
+
+- The script automatically searches all accounts to find the correct account
+- Verify the container ID is correct
+- Check that you have access to the container
+- The script will suggest the correct account ID if found in another account
 
 ### "Failed to publish version"
 

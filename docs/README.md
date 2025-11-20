@@ -17,6 +17,28 @@ This directory contains comprehensive documentation for the GTM Tag Management p
 ## Reference Documentation
 
 - **[GTM API Debug Summary](GTM_API_DEBUG_SUMMARY.md)** - Technical debugging information for GTM API issues
+- **[Cache System](../.cache/README.md)** - Server-side caching system documentation
+
+## System Features
+
+### Caching
+- **Server-Side Caching**: JSON cache files in `.cache/` directory
+- **Shared Cache**: All users benefit from cached results
+- **12-Month Duration**: Cache files valid for 12 months
+- **Easy Maintenance**: View, edit, or delete cache files as needed
+
+### CLI Features
+- **Read-Only Modes**: `--verify`, `--list-only`, `--list-versions`, `--containers-only`
+- **Version Management**: `--list-versions`, `--publish-version`
+- **Multi-Account**: `--all-accounts` for discovery and cross-account updates
+- **Account Auto-Detection**: Automatically finds containers in correct account
+
+### Web Interface Features
+- **Container Browser**: Search, filter, and manage containers
+- **Tag Search**: Cross-container tag search with caching
+- **Bulk Operations**: Refresh all containers, update multiple tags
+- **Column Layouts**: Organized display with aligned columns
+- **Auto-Refresh**: Tags refresh automatically after updates
 
 ## Archived Documentation
 

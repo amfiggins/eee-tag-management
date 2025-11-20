@@ -13,6 +13,7 @@ import { promisify } from 'util';
 import { extractVersion } from '@/utils/version-detector';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { loadFromCache, saveToCache, CACHE_TYPES } from '@/utils/cache-manager';
 
 const execAsync = promisify(exec);
 
@@ -41,6 +42,24 @@ export async function POST(request: NextRequest) {
     // Get script file path for the tag
     const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(tagName), tagName);
     
+    // Check cache first
+    const cacheKey = `${accountId}_${tagName}`;
+    const cachedResults = await loadFromCache<any>(CACHE_TYPES.TAG_SEARCH, cacheKey);
+    
+    if (cachedResults) {
+      console.log(`[CACHE HIT] Returning cached search results for ${tagName} in account ${accountId}`);
+      return NextResponse.json({
+        success: true,
+        containers: cachedResults.containers,
+        repoVersion: cachedResults.repoVersion,
+        totalContainers: cachedResults.totalContainers,
+        foundCount: cachedResults.foundCount,
+        fromCache: true,
+      });
+    }
+    
+    console.log(`[CACHE MISS] Running search for ${tagName} in account ${accountId}`);
+    
     // Read repository version
     let repoVersion = null;
     try {
@@ -62,14 +81,15 @@ export async function POST(request: NextRequest) {
     const command = `python3 "${pythonScript}" --tag-name "${tagName}" --account-id "${accountId}" --credentials "${fixedCredentialsPath}" --list-only --delay 1.0`;
     
     try {
-      // Add timeout of 5 minutes (300 seconds) for large container lists
+      // Add timeout of 20 minutes (1200 seconds) for large container lists (200+ containers)
+      // With 200 containers and 1.0s delay, this should be enough: 200 * 1.0s = 200s + overhead
       const { stdout, stderr } = await Promise.race([
         execAsync(command, {
           cwd: join(process.cwd(), '..', 'automation'),
           maxBuffer: 10 * 1024 * 1024, // 10MB
         }),
         new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Request timeout: Script took longer than 5 minutes to complete')), 300000)
+          setTimeout(() => reject(new Error('Request timeout: Script took longer than 20 minutes to complete')), 1200000)
         )
       ]) as { stdout: string; stderr: string };
       
@@ -96,12 +116,26 @@ export async function POST(request: NextRequest) {
       // Parse output to extract container information
       const containers = parseContainerOutput(stdout, tagName);
       
-      return NextResponse.json({
+      const result = {
         success: true,
         containers,
         repoVersion,
         totalContainers: containers.length,
         foundCount: containers.filter(c => c.hasTag).length,
+      };
+      
+      // Save to cache
+      try {
+        await saveToCache(CACHE_TYPES.TAG_SEARCH, cacheKey, result);
+        console.log(`[CACHE SAVE] Saved search results for ${tagName} in account ${accountId}`);
+      } catch (cacheError) {
+        console.error('Error saving to cache:', cacheError);
+        // Don't fail the request if cache save fails
+      }
+      
+      return NextResponse.json({
+        ...result,
+        fromCache: false,
       });
     } catch (execError: any) {
       // execAsync throws an error if the command fails
