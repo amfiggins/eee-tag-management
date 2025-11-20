@@ -47,6 +47,8 @@ interface ContainerListItem {
   containerId: string;
   containerName?: string;
   accountId?: string;
+  accountName?: string;
+  archived?: boolean; // true if container no longer exists
   // Cached metadata
   metadata?: ContainerMetadata;
   cachedAt?: number; // Timestamp when metadata was cached
@@ -501,31 +503,64 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
         throw new Error(errorMsg);
       }
 
-        if (data.success && data.containers) {
-          console.log(`Loaded ${data.containers.length} containers from API`);
-          
-          // Load cached metadata for each container
-          const containersWithCache = data.containers.map((container: ContainerListItem) => {
-            const cached = loadContainerMetadataFromCache(container.containerId);
-            return {
-              ...container,
-              metadata: cached || undefined,
-              cachedAt: cached ? Date.now() : undefined,
-            };
-          });
-          
-          setContainerList(containersWithCache);
-          // Save to cache
-          saveContainerListToCache(containersWithCache);
-          setError(''); // Clear any previous errors
-          if (data.partial) {
-            setError(`⚠️ Partial results: ${data.note || 'Some containers may be missing.'}`);
+        if (data.success) {
+          if (data.containers && data.containers.length > 0) {
+            console.log(`Loaded ${data.containers.length} containers from API`);
+            
+            // Load cached metadata for each container
+            const containersWithCache = data.containers.map((container: ContainerListItem) => {
+              const cached = loadContainerMetadataFromCache(container.containerId);
+              return {
+                ...container,
+                metadata: cached || undefined,
+                cachedAt: cached ? Date.now() : undefined,
+              };
+            });
+            
+            // Filter out archived containers from display (but they remain in cache)
+            const activeContainers = containersWithCache.filter(c => !c.archived);
+            setContainerList(activeContainers);
+            // Save to cache (including archived containers)
+            saveContainerListToCache(containersWithCache);
+            setError(''); // Clear any previous errors
+            if (data.partial) {
+              setError(`⚠️ Partial results: ${data.note || 'Some containers may be missing.'}`);
+            } else {
+              console.log('All containers loaded successfully');
+            }
+            
+            // Refresh metadata for all active containers (in background, sequentially)
+            // This ensures we have fresh metadata after searching
+            console.log(`Refreshing metadata for ${activeContainers.length} containers...`);
+            for (let i = 0; i < activeContainers.length; i++) {
+              const container = activeContainers[i];
+              try {
+                await loadContainerMetadata(container.containerId, true); // Force reload, bypass cache
+                // Small delay between requests to respect rate limits
+                if (i < activeContainers.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                }
+              } catch (err) {
+                // Log error but continue with other containers
+                console.warn(`Failed to refresh metadata for container ${container.containerId}:`, err);
+              }
+            }
+            console.log('Metadata refresh complete');
           } else {
-            console.log('All containers loaded successfully');
+            // Success but no containers - show helpful message
+            console.warn('API returned success but no containers:', data);
+            setContainerList([]);
+            if (data.note) {
+              setError(`No containers found. ${data.note}`);
+            } else if (data.error) {
+              setError(`No containers found. ${data.error}`);
+            } else {
+              setError('No containers found. This could mean:\n- The account ID is incorrect\n- You don\'t have access to any containers in this account\n- The Python script encountered an error (check server logs)');
+            }
           }
         } else {
-          console.error('API returned success=false or no containers:', data);
-          throw new Error(data.error || 'Failed to load containers');
+          console.error('API returned success=false:', data);
+          throw new Error(data.error || data.message || 'Failed to load containers');
         }
       } catch (fetchError: any) {
         clearTimeout(timeoutId);
@@ -553,7 +588,7 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     setExpandedContainers(newExpanded);
   };
 
-  // Refresh all containers metadata
+  // Refresh all containers metadata and tags
   const refreshAllContainers = async () => {
     if (containerList.length === 0) {
       setError('No containers to refresh. Please search for containers first.');
@@ -567,7 +602,9 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
       // Refresh all containers sequentially to avoid overwhelming the API
       for (let i = 0; i < containerList.length; i++) {
         const container = containerList[i];
+        // Refresh both metadata and tags
         await loadContainerMetadata(container.containerId, true);
+        await loadTagsForContainer(container.containerId, true);
         // Small delay between requests to respect rate limits
         if (i < containerList.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -778,6 +815,7 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
               disabled={refreshingAll || loadingContainers}
               variant="outline"
               className="text-gray-700"
+              title="Refresh metadata and tags for all containers"
             >
               {refreshingAll ? (
                 <>
@@ -899,14 +937,24 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                         ) : (
                           <ChevronRight className="h-5 w-5 text-gray-600 flex-shrink-0" />
                         )}
-                        {/* Container Name - Main, Bold */}
+                        {/* Container Name with Account Name - Main, Bold */}
                         {container.containerName ? (
                           <div className="font-semibold text-base text-gray-900 truncate" title={container.containerName}>
                             {container.containerName}
+                            {container.accountName && (
+                              <span className="text-gray-500 font-normal ml-2">
+                                ({container.accountName})
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <div className="font-semibold text-base text-gray-900">
                             {container.containerId}
+                            {container.accountName && (
+                              <span className="text-gray-500 font-normal ml-2">
+                                ({container.accountName})
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

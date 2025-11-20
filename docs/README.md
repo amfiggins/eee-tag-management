@@ -22,6 +22,9 @@ This directory contains comprehensive documentation for the GTM Tag Management p
 ## System Features
 
 ### Caching
+- **Unified Cache Structure**: One JSON file per account (`container_data_{accountId}.json`)
+- **Shared Data**: Container Browser and Tag Search share the same cache files
+- **Efficient**: Tag search uses cached container data without API calls
 - **Server-Side Caching**: JSON cache files in `.cache/` directory
 - **Shared Cache**: All users benefit from cached results
 - **12-Month Duration**: Cache files valid for 12 months

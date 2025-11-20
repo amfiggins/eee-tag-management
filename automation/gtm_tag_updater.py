@@ -462,7 +462,7 @@ class GTMTagUpdater:
     def list_all_containers(self) -> List[Dict]:
         """
         List all containers from all accounts the user has access to.
-        Returns list of container dicts with containerId, name, and accountId fields.
+        Returns list of container dicts with containerId, name, accountId, and accountName fields.
         """
         all_containers = []
         accounts = self.list_accounts()
@@ -473,12 +473,18 @@ class GTMTagUpdater:
         
         print(f"Found {len(accounts)} account(s), listing containers from all accounts...")
         
+        # Create account name map for quick lookup
+        account_name_map = {acc.get('accountId', ''): acc.get('name', 'Unknown') for acc in accounts}
+        
         for account in accounts:
             account_id = account.get('accountId', '')
             account_name = account.get('name', 'Unknown')
             print(f"  Listing containers from account: {account_name} ({account_id})")
             
             containers = self.list_containers(account_id)
+            # Add account name to each container
+            for container in containers:
+                container['accountName'] = account_name
             all_containers.extend(containers)
             print(f"    Found {len(containers)} container(s) in account {account_id}")
         
@@ -1693,10 +1699,12 @@ Examples:
         sys.exit(1)
     
     # Determine --all-accounts mode: discovery vs update (re-evaluate after initialization)
+    # Note: --containers-only mode should NOT trigger discovery mode - it has its own handling
     is_all_accounts_discovery = (
         args.all_accounts and
         not args.tag_name and
-        not args.script_file
+        not args.script_file and
+        not args.containers_only  # Exclude containers-only mode from discovery
     )
     
     is_all_accounts_update = (
@@ -1706,6 +1714,7 @@ Examples:
     )
     
     # Handle discovery mode (read-only, just list containers)
+    # This is for --all-accounts WITHOUT --containers-only
     if is_all_accounts_discovery:
         containers = updater.list_containers_for_account(args.account_id)
         print(f"\n{'='*60}")
@@ -1777,12 +1786,23 @@ Examples:
     else:
         # Get all containers
         print("\nFetching all containers...")
-        if is_all_accounts_update:
+        # For containers-only mode with --all-accounts, use list_all_containers()
+        if args.containers_only and args.all_accounts:
+            # Containers-only mode with all accounts: list from all accounts
+            containers = updater.list_all_containers()
+        elif is_all_accounts_update:
             # Multi-account update mode: list containers from all accounts
             containers = updater.list_all_containers()
         else:
             # Single account mode: list containers from the specified account
             containers = updater.list_containers()
+            # Get account name for single account mode
+            accounts = updater.list_accounts()
+            account_name_map = {acc.get('accountId', ''): acc.get('name', 'Unknown') for acc in accounts}
+            account_name = account_name_map.get(args.account_id, 'Unknown')
+            # Add account name to each container
+            for container in containers:
+                container['accountName'] = account_name
         if not containers:
             print("ERROR: No containers found or failed to list containers")
             sys.exit(1)
@@ -1798,17 +1818,22 @@ Examples:
         # Create maps for container info from the original containers list
         container_name_map = {}
         container_account_map = {}
+        container_account_name_map = {}
         if containers:
             for c in containers:
                 container_id = c.get('containerId', '')
                 container_name_map[container_id] = c.get('name', '')
                 container_account_map[container_id] = c.get('accountId', '')
+                container_account_name_map[container_id] = c.get('accountName', '')
         
-        # Print container IDs, names, and account IDs
+        # Print container IDs, names, account IDs, and account names
         for container_id in container_ids:
             container_name = container_name_map.get(container_id, '')
             account_id = container_account_map.get(container_id, '')
-            if container_name and account_id:
+            account_name = container_account_name_map.get(container_id, '')
+            if container_name and account_id and account_name:
+                print(f"Container ID: {container_id} | Name: {container_name} | Account: {account_id} | Account Name: {account_name}")
+            elif container_name and account_id:
                 print(f"Container ID: {container_id} | Name: {container_name} | Account: {account_id}")
             elif container_name:
                 print(f"Container ID: {container_id} | Name: {container_name}")

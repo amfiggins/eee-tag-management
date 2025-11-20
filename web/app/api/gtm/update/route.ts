@@ -3,14 +3,15 @@
  * Handles tag updates across multiple GTM containers
  * 
  * Author: Anthony Figgins
- * Version: 1.2.0
- * Date Updated: 2025-11-18
+ * Version: 1.3.0
+ * Date Updated: 2025-11-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { findPythonExecutable } from '@/utils/python-executor';
+import { invalidateContainerTagsCache } from '@/utils/cache-manager';
 
 export async function POST(request: NextRequest) {
   try {
@@ -141,6 +142,21 @@ export async function POST(request: NextRequest) {
         console.log('[GTM Update API] Python script output:', stdout);
         console.log('[GTM Update API] Parsed results:', results);
         
+        // Invalidate cache for all containers that were attempted to be updated
+        // This ensures next fetch gets fresh tag data, even if we can't parse success status
+        // We invalidate for all containers since the update process may have modified them
+        // Use Promise.allSettled to not block response if cache invalidation fails
+        Promise.allSettled(
+          containerIds.map((containerId: string) =>
+            invalidateContainerTagsCache(containerId, accountId, false)
+              .catch((err) => {
+                console.error(`[CACHE] Failed to invalidate cache for container ${containerId}:`, err);
+              })
+          )
+        ).then(() => {
+          console.log(`[CACHE] Invalidated tags cache for ${containerIds.length} container(s) after update`);
+        });
+        
         resolve(NextResponse.json({
           success: true,
           results,
@@ -213,29 +229,50 @@ function getTagCategory(tagName: string): string {
 function parseUpdateOutput(output: string): any {
   const lines = output.split('\n');
   const results: any[] = [];
+  let currentContainerId: string | null = null;
   
   for (const line of lines) {
-    if (line.includes('Processing container:')) {
-      const containerMatch = line.match(/Processing container:\s*(\d+)/);
-      if (containerMatch) {
+    // Look for container ID in various formats
+    const containerMatch = line.match(/Processing container:\s*(\d+)|Container\s+(\d+):|container\s+(\d+)/i);
+    if (containerMatch) {
+      currentContainerId = containerMatch[1] || containerMatch[2] || containerMatch[3];
+      results.push({
+        containerId: currentContainerId,
+        status: 'processing',
+      });
+    }
+    
+    // Look for success indicators
+    if (line.includes('✓ Success') || 
+        line.includes('Version published successfully') ||
+        line.includes('Successfully published') ||
+        line.includes('published successfully') ||
+        (line.includes('Success:') && line.includes('1'))) {
+      const lastResult = results[results.length - 1];
+      if (lastResult) {
+        lastResult.status = 'success';
+      } else if (currentContainerId) {
+        // If we have a container ID but no result yet, create one
         results.push({
-          containerId: containerMatch[1],
-          status: 'processing',
+          containerId: currentContainerId,
+          status: 'success',
         });
       }
     }
     
-    if (line.includes('Tag updated successfully')) {
-      const lastResult = results[results.length - 1];
-      if (lastResult) {
-        lastResult.status = 'success';
-      }
-    }
-    
-    if (line.includes('Failed to update')) {
+    // Look for failure indicators
+    if (line.includes('Failed to update') ||
+        line.includes('❌ Failed') ||
+        line.includes('ERROR:') ||
+        (line.includes('Failed:') && line.includes('1'))) {
       const lastResult = results[results.length - 1];
       if (lastResult) {
         lastResult.status = 'failed';
+      } else if (currentContainerId) {
+        results.push({
+          containerId: currentContainerId,
+          status: 'failed',
+        });
       }
     }
   }

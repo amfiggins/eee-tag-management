@@ -81,12 +81,17 @@ Modern web interface for managing Google Tag Manager tags across multiple contai
 
 ## Caching
 
-The web interface uses **server-side caching** for improved performance:
-- Cache files stored in `.cache/` directory (JSON format)
-- Shared across all users
-- 12-month cache duration
-- Cache is automatically managed by the API routes
-- Delete cache files in `.cache/` to force fresh data
+The web interface uses **unified server-side caching** for improved performance:
+- **Unified Cache Structure**: One JSON file per account (`container_data_{accountId}.json`)
+- **Shared Data**: Container Browser and Tag Search share the same cache
+- **Efficient**: Tag search uses cached container data without API calls
+- **Cache Files**: Stored in `.cache/` directory (JSON format)
+- **Shared Across Users**: All users benefit from cached results
+- **12-Month Duration**: Cache files valid for 12 months
+- **Automatic Management**: Cache is automatically managed by the API routes
+- **Easy Maintenance**: Delete cache files in `.cache/` to force fresh data
+
+See [`.cache/README.md`](../.cache/README.md) for detailed cache structure and management.
 
 ## Requirements
 

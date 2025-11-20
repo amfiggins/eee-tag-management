@@ -181,15 +181,28 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 
 ## Caching System
 
-The application uses **server-side caching** for improved performance:
-- Cache files stored in `.cache/` directory (JSON format)
-- Shared across all users for faster access
-- 12-month cache duration
-- Cache types: tag search results, container lists, container metadata, container tags
-- Cache files are tracked in git (commit and push to share with team)
-- Delete cache files to force fresh data
+The application uses **unified server-side caching** for improved performance:
 
-See [`.cache/README.md`](.cache/README.md) for cache management details.
+### Unified Cache Structure
+- **One file per account**: `container_data_{accountId}.json` contains all containers for that account
+- **All accounts file**: `container_data_all.json` when searching across all accounts
+- **Shared data**: Container Browser and Tag Search use the same cache files
+- **Efficient**: Tag search reads from container cache, avoiding duplicate API calls
+
+### Cache Benefits
+- **Shared across users**: All users benefit from cached results
+- **12-month duration**: Cache files valid for 12 months
+- **Automatic management**: Cache is automatically managed by the API routes
+- **Easy maintenance**: Delete cache files in `.cache/` to force fresh data
+- **Searchable**: All container data in one place per account
+- **Tracked in git**: Cache files are tracked in git (commit and push to share with team)
+
+### How It Works
+1. **Container Browser - Refresh All**: Creates/updates account cache file with all containers
+2. **Container Browser - Refresh Tags**: Updates container's tags array in account cache
+3. **Tag Search**: Reads from account cache to find containers with the tag, updates cache when found
+
+See [`.cache/README.md`](.cache/README.md) for detailed cache structure and management.
 
 ## Contributing
 

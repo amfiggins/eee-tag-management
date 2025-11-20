@@ -3,8 +3,8 @@
  * Searches for a specific tag across all GTM containers
  * 
  * Author: Anthony Figgins
- * Version: 1.0.1
- * Date Updated: 2025-11-17
+ * Version: 2.0.0
+ * Date Updated: 2025-11-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -13,7 +13,7 @@ import { promisify } from 'util';
 import { extractVersion } from '@/utils/version-detector';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
-import { loadFromCache, saveToCache, CACHE_TYPES } from '@/utils/cache-manager';
+import { loadAccountCache, searchTagInCachedContainers, updateContainerTagsInCache, getContainerFromCache } from '@/utils/cache-manager';
 
 const execAsync = promisify(exec);
 
@@ -42,25 +42,7 @@ export async function POST(request: NextRequest) {
     // Get script file path for the tag
     const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(tagName), tagName);
     
-    // Check cache first
-    const cacheKey = `${accountId}_${tagName}`;
-    const cachedResults = await loadFromCache<any>(CACHE_TYPES.TAG_SEARCH, cacheKey);
-    
-    if (cachedResults) {
-      console.log(`[CACHE HIT] Returning cached search results for ${tagName} in account ${accountId}`);
-      return NextResponse.json({
-        success: true,
-        containers: cachedResults.containers,
-        repoVersion: cachedResults.repoVersion,
-        totalContainers: cachedResults.totalContainers,
-        foundCount: cachedResults.foundCount,
-        fromCache: true,
-      });
-    }
-    
-    console.log(`[CACHE MISS] Running search for ${tagName} in account ${accountId}`);
-    
-    // Read repository version
+    // Read repository version first
     let repoVersion = null;
     try {
       const scriptContent = await readFile(scriptPath, 'utf-8');
@@ -68,6 +50,34 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       console.error('Error reading script file:', error);
     }
+    
+    // Check unified cache first - search for tag in cached containers
+    // Note: allAccounts parameter not currently passed from frontend, defaulting to false
+    // TODO: Add allAccounts support to tag search
+    const allAccountsBool = false; // Will be updated when frontend supports it
+    const cachedContainers = await searchTagInCachedContainers(tagName, accountId, allAccountsBool);
+    if (cachedContainers.length > 0) {
+      console.log(`[CACHE HIT] Found ${cachedContainers.length} containers with tag ${tagName} in unified cache`);
+      const containers = cachedContainers.map(c => ({
+        containerId: c.containerId,
+        containerName: c.containerName,
+        hasTag: true,
+        tagVersion: c.tagVersion,
+        tagId: c.tagId,
+        status: 'found' as const,
+      }));
+      
+      return NextResponse.json({
+        success: true,
+        containers,
+        repoVersion,
+        totalContainers: containers.length,
+        foundCount: containers.length,
+        fromCache: true,
+      });
+    }
+    
+    console.log(`[CACHE MISS] Running search for ${tagName} in account ${accountId}`);
     
     // Run Python script to search for tag
     const pythonScript = join(process.cwd(), '..', 'automation', 'gtm_tag_updater.py');
@@ -116,22 +126,59 @@ export async function POST(request: NextRequest) {
       // Parse output to extract container information
       const containers = parseContainerOutput(stdout, tagName);
       
+      // Update unified cache with tag information found
+      // For each container that has the tag, update its tags array in the cache
+      const containersWithTag = containers.filter(c => c.hasTag);
+      for (const container of containersWithTag) {
+        try {
+          // Get existing container data from cache
+          const existingContainer = await getContainerFromCache(container.containerId, accountId, allAccountsBool);
+          if (existingContainer) {
+            // Update tags array with this tag (unfiltered - all tags)
+            const existingTags = existingContainer.tags || [];
+            const tagIndex = existingTags.findIndex(t => t.tagName === tagName);
+            const tagData = {
+              tagId: container.tagId || '',
+              tagName: tagName,
+              version: container.tagVersion,
+              repoVersion: repoVersion,
+              isUpToDate: container.tagVersion === repoVersion,
+              needsUpdate: container.tagVersion !== repoVersion && repoVersion !== null,
+            };
+            
+            if (tagIndex >= 0) {
+              existingTags[tagIndex] = { ...existingTags[tagIndex], ...tagData };
+            } else {
+              existingTags.push(tagData);
+            }
+            
+            await updateContainerTagsInCache(container.containerId, accountId, allAccountsBool, existingTags, false);
+          } else {
+            // Container not in cache yet, create it with just this tag
+            await updateContainerTagsInCache(container.containerId, accountId, allAccountsBool, [{
+              tagId: container.tagId || '',
+              tagName: tagName,
+              version: container.tagVersion,
+              repoVersion: repoVersion,
+              isUpToDate: container.tagVersion === repoVersion,
+              needsUpdate: container.tagVersion !== repoVersion && repoVersion !== null,
+            }], false);
+          }
+        } catch (cacheError) {
+          console.error(`Error updating cache for container ${container.containerId}:`, cacheError);
+          // Don't fail the request if cache update fails
+        }
+      }
+      
       const result = {
         success: true,
         containers,
         repoVersion,
         totalContainers: containers.length,
-        foundCount: containers.filter(c => c.hasTag).length,
+        foundCount: containersWithTag.length,
       };
       
-      // Save to cache
-      try {
-        await saveToCache(CACHE_TYPES.TAG_SEARCH, cacheKey, result);
-        console.log(`[CACHE SAVE] Saved search results for ${tagName} in account ${accountId}`);
-      } catch (cacheError) {
-        console.error('Error saving to cache:', cacheError);
-        // Don't fail the request if cache save fails
-      }
+      console.log(`[CACHE] Updated unified cache with tag ${tagName} for ${containersWithTag.length} containers`);
       
       return NextResponse.json({
         ...result,

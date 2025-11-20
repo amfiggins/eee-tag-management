@@ -3,8 +3,8 @@
  * Gets container metadata including permissions, last updated date, etc.
  * 
  * Author: Anthony Figgins
- * Version: 1.0.0
- * Date Updated: 2025-11-17
+ * Version: 2.0.0
+ * Date Updated: 2025-11-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -12,6 +12,7 @@ import { spawn } from 'child_process';
 import { join } from 'path';
 import { writeFileSync, existsSync, unlinkSync } from 'fs';
 import { findPythonExecutable } from '@/utils/python-executor';
+import { getContainerFromCache, updateContainerMetadataInCache } from '@/utils/cache-manager';
 
 interface ContainerMetadata {
   containerId: string;
@@ -31,7 +32,7 @@ interface ContainerMetadata {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { containerId, accountId, credentialsPath } = body;
+    const { containerId, accountId, credentialsPath, allAccounts } = body;
 
     if (!containerId || !accountId || !credentialsPath) {
       return NextResponse.json(
@@ -42,6 +43,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Check unified cache first
+    const allAccountsBool = allAccounts === true || allAccounts === 'true';
+    const cachedContainer = await getContainerFromCache(containerId, accountId, allAccountsBool);
+    if (cachedContainer && cachedContainer.metadata) {
+      console.log(`[CACHE HIT] Returning cached metadata for container ${containerId}`);
+      return NextResponse.json({
+        success: true,
+        metadata: cachedContainer.metadata as ContainerMetadata,
+        fromCache: true,
+      });
+    }
+    
+    console.log(`[CACHE MISS] Fetching metadata for container ${containerId}`);
 
     const pythonScript = join(process.cwd(), '..', 'automation', 'gtm_tag_updater.py');
     
@@ -160,9 +175,19 @@ except Exception as e:
 
             const metadata: ContainerMetadata = result.metadata;
 
+            // Save to unified cache
+            updateContainerMetadataInCache(containerId, accountId, allAccountsBool, metadata)
+              .then(() => {
+                console.log(`[CACHE] Saved metadata for container ${containerId} to unified cache`);
+              })
+              .catch((err) => {
+                console.error(`[CACHE] Failed to save metadata for container ${containerId}:`, err);
+              });
+
             resolve(NextResponse.json({
               success: true,
               metadata,
+              fromCache: false,
             }));
           } catch (parseError: any) {
             resolve(NextResponse.json(

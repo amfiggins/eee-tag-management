@@ -5,8 +5,8 @@
  * Improved error handling to always return valid JSON
  * 
  * Author: Anthony Figgins
- * Version: 1.0.5
- * Date Updated: 2025-11-17
+ * Version: 2.0.0
+ * Date Updated: 2025-11-20
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -14,7 +14,7 @@ import { spawn } from 'child_process';
 import { join } from 'path';
 import { writeFileSync, existsSync, unlinkSync } from 'fs';
 import { findPythonExecutable } from '@/utils/python-executor';
-import { loadFromCache, saveToCache, CACHE_TYPES } from '@/utils/cache-manager';
+import { getContainerFromCache, updateContainerTagsInCache } from '@/utils/cache-manager';
 
 interface ContainerTag {
   tagId: string;
@@ -29,7 +29,7 @@ interface ContainerTag {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { containerId, accountId, credentialsPath, filter3E } = body;
+    const { containerId, accountId, credentialsPath, filter3E, allAccounts } = body;
     
     // Debug logging
     console.log(`[API] Getting tags for container ${containerId}, filter3E: ${filter3E} (type: ${typeof filter3E})`);
@@ -47,19 +47,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check cache first
-    const cacheKey = `${accountId}_${containerId}_${filter3E === true || filter3E === 'true'}`;
-    const cachedTags = await loadFromCache<ContainerTag[]>(CACHE_TYPES.CONTAINER_TAGS, cacheKey);
+    // Check unified cache first
+    const filter3EBool = filter3E === true || filter3E === 'true';
+    const allAccountsBool = allAccounts === true || allAccounts === 'true';
+    const cachedContainer = await getContainerFromCache(containerId, accountId, allAccountsBool);
     
-    if (cachedTags) {
-      console.log(`[CACHE HIT] Returning cached tags for container ${containerId}`);
-      return NextResponse.json({
-        success: true,
-        containerId,
-        tags: cachedTags,
-        count: cachedTags.length,
-        fromCache: true,
-      });
+    if (cachedContainer) {
+      // Check if we have cached tags for the requested filter
+      const cachedTags = filter3EBool 
+        ? (cachedContainer.tagsFilter3E || cachedContainer.tags)
+        : cachedContainer.tags;
+      
+      if (cachedTags && cachedTags.length > 0) {
+        console.log(`[CACHE HIT] Returning ${cachedTags.length} cached tags for container ${containerId} (filter3E=${filter3EBool})`);
+        return NextResponse.json({
+          success: true,
+          containerId,
+          tags: cachedTags as ContainerTag[],
+          count: cachedTags.length,
+          fromCache: true,
+        });
+      }
     }
     
     console.log(`[CACHE MISS] Fetching tags for container ${containerId}`);
@@ -210,11 +218,15 @@ except Exception as e:
             // Extract tags from result (could be direct array or in result.tags)
             const tags: ContainerTag[] = Array.isArray(result) ? result : (result.tags || []);
 
-            // Save to cache
-            saveToCache(CACHE_TYPES.CONTAINER_TAGS, cacheKey, tags).catch((cacheError) => {
-              console.error('Error saving tags to cache:', cacheError);
-              // Don't fail the request if cache save fails
-            });
+            // Save to unified cache
+            updateContainerTagsInCache(containerId, accountId, allAccountsBool, tags, filter3EBool)
+              .then(() => {
+                console.log(`[CACHE] Saved ${tags.length} tags for container ${containerId} to unified cache (filter3E=${filter3EBool})`);
+              })
+              .catch((cacheError) => {
+                console.error('Error saving tags to unified cache:', cacheError);
+                // Don't fail the request if cache save fails
+              });
 
             resolve(NextResponse.json({
               success: true,

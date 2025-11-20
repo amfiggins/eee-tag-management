@@ -113,9 +113,12 @@ Before using the web interface, you need:
 ## Performance Tips
 
 - **First Search**: May take several minutes for 200+ containers (20-minute timeout)
-- **Cached Results**: Subsequent searches load instantly from server-side cache
+- **Cached Results**: Subsequent searches load instantly from unified server-side cache
+- **Unified Cache**: One file per account (`container_data_{accountId}.json`) contains all container data
+- **Shared Data**: Container Browser and Tag Search share the same cache files
 - **Cache Location**: Cache files stored in `.cache/` directory (JSON format)
 - **Refresh Cache**: Delete cache files in `.cache/` to force fresh data
+- **Efficient**: Tag search uses cached container data, avoiding duplicate API calls
 
 ## Need Help?
 
