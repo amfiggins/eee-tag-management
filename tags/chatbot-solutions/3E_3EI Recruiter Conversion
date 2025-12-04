@@ -2,8 +2,8 @@
 // Script Name: 3E_3EI Recruiter Conversion
 // Author: Anthony Figgins
 // Description: Submits a hidden Marketo blind form on 3EI Recruiter email capture using 3E config; lazy-loads Forms2 and ensures tracking cookie.
-// Version: 2.2.4
-// Date Updated: 2025-09-26
+// Version: 2.2.5
+// Date Updated: 2025-12-04
 // Dependencies: 3E Config, Marketo Forms2
 
 (function () {
@@ -17,18 +17,34 @@
   }
 
   // --- Marketo values ---
-  var MKTO_BASE    = CFG.baseUrl;
-  var MKTO_ID      = CFG.munchkinId;
+  var MKTO_BASE_RAW = CFG && CFG.baseUrl ? String(CFG.baseUrl).trim() : '';
+  // Normalize baseUrl - remove trailing slash and ensure protocol
+  var MKTO_BASE = MKTO_BASE_RAW ? MKTO_BASE_RAW.replace(/\/+$/, '') : '';
+  var MKTO_ID      = CFG && CFG.munchkinId ? String(CFG.munchkinId).trim() : '';
   var MKTO_DEBUG = CFG && CFG.debugMode === 'true';
-  var MKTO_FORM_ID = CFG.blindFormId;
+  var MKTO_FORM_ID = CFG && CFG.blindFormId ? String(CFG.blindFormId).trim() : '';
 
   // --- Chatbot values (not used here, but available) ---
-  var CHATBOT_PROD = CFG.chatBotProdId;
-  var CHATBOT_DEV  = CFG.chatBotDevId;
+  var CHATBOT_PROD = CFG && CFG.chatBotProdId ? CFG.chatBotProdId : '';
+  var CHATBOT_DEV  = CFG && CFG.chatBotDevId ? CFG.chatBotDevId : '';
 
   // Log script name and version on load (only in debug mode)
   if (MKTO_DEBUG) {
-    console.log('[3E_ChatBot Conversion] v2.2.4');
+    console.log('[3E_ChatBot Conversion] v2.2.5');
+  }
+
+  // === Validate required config values ===
+  if (!MKTO_BASE) {
+    if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Missing baseUrl in 3E config');
+    return;
+  }
+  if (!MKTO_ID) {
+    if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Missing munchkinId in 3E config');
+    return;
+  }
+  if (!MKTO_FORM_ID) {
+    if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Missing blindFormId in 3E config');
+    return;
   }
 
   // === DataLayer event ===
@@ -36,10 +52,16 @@
     ? window.dataLayer[window.dataLayer.length - 1]
     : {};
 
-  if (!ev || ev.event !== 'bot_email_captured' || !ev.details || !ev.details.email) return;
+  if (!ev || ev.event !== 'bot_email_captured' || !ev.details || !ev.details.email) {
+    if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] No bot_email_captured event found');
+    return;
+  }
 
   var email = String(ev.details.email || '').trim();
-  if (!email) return;
+  if (!email) {
+    if (MKTO_DEBUG) console.warn('[3E_ChatBot Conversion] Email is empty');
+    return;
+  }
 
   // === Ensure hidden form container ===
   var ctr = document.getElementById('mkto-hidden-form');
@@ -51,12 +73,27 @@
   }
 
   // === Loader for Forms2 ===
-  function loadForms2(cb) {
-    if (window.MktoForms2) { cb(); return; }
+  function loadForms2(cb, errCb) {
+    if (window.MktoForms2) { 
+      cb(); 
+      return; 
+    }
     var s = document.createElement('script');
     s.async = true;
     s.src = MKTO_BASE + '/js/forms2/js/forms2.min.js';
-    s.onload = cb;
+    s.onload = function() {
+      if (window.MktoForms2) {
+        cb();
+      } else {
+        if (errCb) errCb(new Error('MktoForms2 not available after script load'));
+        else if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] MktoForms2 not available after script load');
+      }
+    };
+    s.onerror = function() {
+      var err = new Error('Failed to load Marketo Forms2 script from ' + s.src);
+      if (errCb) errCb(err);
+      else if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion]', err);
+    };
     document.head.appendChild(s);
   }
 
@@ -70,13 +107,94 @@
   }
 
   // === Submit hidden form ===
-  loadForms2(function () {
-    window.MktoForms2.loadForm(MKTO_BASE, MKTO_ID, MKTO_FORM_ID, function (form) {
-      form.vals({ Email: email /* , Source: 'Chatbot' etc. */ });
-      form.onSuccess(function () { return false; });
-      form.submit();
-      if (MKTO_DEBUG) console.log('[Form submitted]', email);
-    });
-  });
+  loadForms2(
+    function () {
+      if (!window.MktoForms2) {
+        if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] MktoForms2 is not available');
+        return;
+      }
+
+      if (MKTO_DEBUG) {
+        console.log('[3E_ChatBot Conversion] Loading form with config:', {
+          baseUrl: MKTO_BASE,
+          munchkinId: MKTO_ID,
+          formId: MKTO_FORM_ID,
+          email: email
+        });
+      }
+
+      // Set a timeout to detect if form never loads
+      var formLoadTimeout = setTimeout(function() {
+        if (MKTO_DEBUG) {
+          console.error('[3E_ChatBot Conversion] Form load timeout - form may not exist or IDs are incorrect');
+          console.error('[3E_ChatBot Conversion] Verify form ID', MKTO_FORM_ID, 'exists in Marketo instance', MKTO_BASE);
+        }
+      }, 10000); // 10 second timeout
+
+      try {
+        window.MktoForms2.loadForm(
+          MKTO_BASE, 
+          MKTO_ID, 
+          MKTO_FORM_ID, 
+          function (form) {
+            clearTimeout(formLoadTimeout);
+
+            // Validate form object
+            if (!form) {
+              if (MKTO_DEBUG) {
+                console.error('[3E_ChatBot Conversion] Form object is null or undefined');
+                console.error('[3E_ChatBot Conversion] This usually means the form ID is invalid or the form does not exist');
+              }
+              return;
+            }
+
+            if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form loaded successfully');
+
+            // Set form values
+            try {
+              form.vals({ Email: email /* , Source: 'Chatbot' etc. */ });
+            } catch (e) {
+              if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error setting form values:', e);
+              return;
+            }
+
+            // Handle form submission success
+            form.onSuccess(function () { 
+              if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form submitted successfully:', email);
+              return false; 
+            });
+
+            // Handle form errors
+            if (form.onError) {
+              form.onError(function (error) {
+                if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Form submission error:', error);
+              });
+            }
+
+            // Submit the form
+            try {
+              form.submit();
+              if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form submit called for:', email);
+            } catch (e) {
+              if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error submitting form:', e);
+            }
+          }
+        );
+      } catch (e) {
+        clearTimeout(formLoadTimeout);
+        if (MKTO_DEBUG) {
+          console.error('[3E_ChatBot Conversion] Exception loading form:', e);
+          console.error('[3E_ChatBot Conversion] Config values:', {
+            baseUrl: MKTO_BASE,
+            munchkinId: MKTO_ID,
+            formId: MKTO_FORM_ID
+          });
+        }
+      }
+    },
+    function (err) {
+      if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Failed to load Forms2 script:', err);
+    }
+  );
 })();
 </script>
