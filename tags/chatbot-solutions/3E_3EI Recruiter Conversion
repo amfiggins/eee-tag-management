@@ -2,7 +2,7 @@
 // Script Name: 3E_3EI Recruiter Conversion
 // Author: Anthony Figgins
 // Description: Submits a hidden Marketo blind form on 3EI Recruiter email capture using 3E config; lazy-loads Forms2 and ensures tracking cookie.
-// Version: 2.2.5
+// Version: 2.2.9
 // Date Updated: 2025-12-04
 // Dependencies: 3E Config, Marketo Forms2
 
@@ -18,8 +18,18 @@
 
   // --- Marketo values ---
   var MKTO_BASE_RAW = CFG && CFG.baseUrl ? String(CFG.baseUrl).trim() : '';
-  // Normalize baseUrl - remove trailing slash and ensure protocol
-  var MKTO_BASE = MKTO_BASE_RAW ? MKTO_BASE_RAW.replace(/\/+$/, '') : '';
+  // Normalize baseUrl - ensure protocol-relative format (//domain.com)
+  // Remove http:// or https:// if present, remove trailing slashes, then add //
+  var MKTO_BASE = '';
+  if (MKTO_BASE_RAW) {
+    MKTO_BASE = MKTO_BASE_RAW
+      .replace(/^https?:\/\//, '') // Remove http:// or https://
+      .replace(/\/+$/, '') // Remove trailing slashes
+      .replace(/^\/+/, ''); // Remove leading slashes
+    if (MKTO_BASE) {
+      MKTO_BASE = '//' + MKTO_BASE; // Add protocol-relative prefix
+    }
+  }
   var MKTO_ID      = CFG && CFG.munchkinId ? String(CFG.munchkinId).trim() : '';
   var MKTO_DEBUG = CFG && CFG.debugMode === 'true';
   var MKTO_FORM_ID = CFG && CFG.blindFormId ? String(CFG.blindFormId).trim() : '';
@@ -30,7 +40,7 @@
 
   // Log script name and version on load (only in debug mode)
   if (MKTO_DEBUG) {
-    console.log('[3E_ChatBot Conversion] v2.2.5');
+    console.log('[3E_ChatBot Conversion] v2.2.9');
   }
 
   // === Validate required config values ===
@@ -63,12 +73,20 @@
     return;
   }
 
-  // === Ensure hidden form container ===
-  var ctr = document.getElementById('mkto-hidden-form');
+  // === Check for existing Marketo forms on the page ===
+  var existingForms = document.querySelectorAll('form.mktoForm, form[id^="mktoForm_"]');
+  if (existingForms.length > 0 && MKTO_DEBUG) {
+    console.log('[3E_ChatBot Conversion] Detected', existingForms.length, 'existing Marketo form(s) on page. Our hidden form will be isolated.');
+  }
+
+  // === Ensure hidden form container (unique and isolated) ===
+  var ctr = document.getElementById('mkto-hidden-form-conversion');
   if (!ctr) {
     ctr = document.createElement('div');
-    ctr.id = 'mkto-hidden-form';
+    ctr.id = 'mkto-hidden-form-conversion';
+    ctr.className = 'mkto-hidden-form-container';
     ctr.style.display = 'none';
+    ctr.setAttribute('data-mkto-form-purpose', 'hidden-conversion');
     document.body.appendChild(ctr);
   }
 
@@ -119,7 +137,8 @@
           baseUrl: MKTO_BASE,
           munchkinId: MKTO_ID,
           formId: MKTO_FORM_ID,
-          email: email
+          email: email,
+          forms2ScriptUrl: MKTO_BASE + '/js/forms2/js/forms2.min.js'
         });
       }
 
@@ -132,10 +151,18 @@
       }, 10000); // 10 second timeout
 
       try {
+        // Convert form ID to number if it's a string (Marketo accepts both)
+        var formIdNum = parseInt(MKTO_FORM_ID, 10);
+        if (isNaN(formIdNum)) {
+          if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Invalid form ID (not a number):', MKTO_FORM_ID);
+          return;
+        }
+
+        // Load form into the hidden container
         window.MktoForms2.loadForm(
           MKTO_BASE, 
           MKTO_ID, 
-          MKTO_FORM_ID, 
+          formIdNum, 
           function (form) {
             clearTimeout(formLoadTimeout);
 
@@ -144,41 +171,124 @@
               if (MKTO_DEBUG) {
                 console.error('[3E_ChatBot Conversion] Form object is null or undefined');
                 console.error('[3E_ChatBot Conversion] This usually means the form ID is invalid or the form does not exist');
+                console.error('[3E_ChatBot Conversion] Verify form ID', formIdNum, 'exists in Marketo instance', MKTO_BASE, 'with munchkin ID', MKTO_ID);
               }
               return;
             }
 
             if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form loaded successfully');
 
-            // Set form values
-            try {
-              form.vals({ Email: email /* , Source: 'Chatbot' etc. */ });
-            } catch (e) {
-              if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error setting form values:', e);
-              return;
-            }
+            // Use whenReady on our specific form instance to ensure it's fully initialized
+            // This form object is already scoped to our form (from loadForm callback)
+            // Using form.whenReady() ensures we only affect THIS form instance, not others
+            form.whenReady(function() {
+              // Verify this form is in our container (double-check isolation)
+              var formElem = form.getFormElem && form.getFormElem();
+              var isOurForm = false;
+              
+              if (formElem && formElem.length) {
+                var nativeForm = formElem[0];
+                if (nativeForm) {
+                  // Check if form is in our container
+                  if (nativeForm.closest && nativeForm.closest('#mkto-hidden-form-conversion')) {
+                    isOurForm = true;
+                  } else if (nativeForm.parentElement) {
+                    // Fallback: check parent chain
+                    var parent = nativeForm.parentElement;
+                    while (parent && parent !== document.body) {
+                      if (parent.id === 'mkto-hidden-form-conversion') {
+                        isOurForm = true;
+                        break;
+                      }
+                      parent = parent.parentElement;
+                    }
+                  }
+                }
+              }
+              
+              if (!isOurForm && MKTO_DEBUG) {
+                console.warn('[3E_ChatBot Conversion] Form not in our container - this should not happen');
+              }
 
-            // Handle form submission success
-            form.onSuccess(function () { 
-              if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form submitted successfully:', email);
-              return false; 
-            });
+              if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Setting up handlers for our isolated form instance');
+              
+              // Prevent page reload/redirect - MULTIPLE LAYERS OF PROTECTION
+              // All operations use 'form' variable which is scoped to our specific form instance
+              
+              // 1. Set followUpUrl to current page (prevents redirect)
+              try {
+                if (form.setFollowUpUrl) {
+                  form.setFollowUpUrl(window.location.href);
+                }
+              } catch (e) {
+                if (MKTO_DEBUG) console.warn('[3E_ChatBot Conversion] Could not set followUpUrl:', e);
+              }
 
-            // Handle form errors
-            if (form.onError) {
-              form.onError(function (error) {
-                if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Form submission error:', error);
+              // 2. Remove/modify form action attribute to prevent navigation (only our form)
+              try {
+                var formElement = form.getFormElem && form.getFormElem();
+                if (formElement && formElement.length) {
+                  var nativeForm = formElement[0];
+                  if (nativeForm && isOurForm) {
+                    // Remove action attribute or set to javascript:void(0)
+                    nativeForm.setAttribute('action', 'javascript:void(0)');
+                    nativeForm.setAttribute('target', '_self');
+                    // Remove any target that might cause navigation
+                    if (nativeForm.target) {
+                      nativeForm.target = '_self';
+                    }
+                    if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Modified our form action to prevent navigation');
+                    
+                    // Attach submit listener ONLY to our form
+                    formElement.off('submit').on('submit', function(e) {
+                      // Double-check this is our form
+                      var targetForm = e.target;
+                      if (targetForm && (targetForm.closest && targetForm.closest('#mkto-hidden-form-conversion'))) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
+                        if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Prevented native form submit (our form only)');
+                        return false;
+                      }
+                    });
+                  }
+                }
+              } catch (e) {
+                if (MKTO_DEBUG) console.warn('[3E_ChatBot Conversion] Could not modify form element:', e);
+              }
+
+              // 3. Handle form submission success - prevent redirect (only our form)
+              form.onSuccess(function (values, followUpUrl) { 
+                if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form submitted successfully:', email);
+                // Return false to prevent default redirect behavior
+                return false; 
               });
-            }
 
-            // Submit the form
-            try {
-              form.submit();
-              if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form submit called for:', email);
-            } catch (e) {
-              if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error submitting form:', e);
-            }
-          }
+              // 4. Handle form errors (only our form)
+              if (form.onError) {
+                form.onError(function (error) {
+                  if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Form submission error:', error);
+                });
+              }
+
+              // 5. Set form values (only our form)
+              try {
+                form.vals({ Email: email /* , Source: 'Chatbot' etc. */ });
+              } catch (e) {
+                if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error setting form values:', e);
+                return;
+              }
+
+              // 6. Submit the form (onSuccess returning false should prevent redirect)
+              try {
+                form.submit();
+                if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form submit called for:', email);
+              } catch (e) {
+                if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error submitting form:', e);
+              }
+            });
+          },
+          ctr // Specify the container element for the hidden form
         );
       } catch (e) {
         clearTimeout(formLoadTimeout);
