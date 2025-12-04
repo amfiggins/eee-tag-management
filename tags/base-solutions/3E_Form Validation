@@ -2,8 +2,9 @@
 // Script Name: 3E_Form Validation
 // Author: Anthony Figgins
 // Description: Advanced Marketo form validation with 3E config integration, including name validation, EDU email validation, IP blocking, math questions, and comprehensive debugging.
-// Version: 7.2.0
-// Date Updated: 2025-10-28
+// Version: 7.3.0
+// Date Updated: 2025-12-19
+// Changes: Added hidden form container detection to skip validation for hidden conversion forms
 
 (function() {
     // Check for the original hardcoded script by searching for "custom-marketo-validation" identifier
@@ -67,7 +68,7 @@
 
     // Log script name and version on load (only in debug mode)
     if (debugMode) {
-        console.log('[3E_Form Validation] v7.2.0');
+        console.log('[3E_Form Validation] v7.3.0');
         console.log("3E Form Validation Script Initialized with the following settings:");
         console.log("Enable Name Validation:", enableNameValidation);
         console.log("Enable Math Question Validation:", enableMathQuestion);
@@ -437,9 +438,51 @@
         errorContainer.innerHTML = errors.join('<br>');
     }
 
+    // Helper function to check if a form is in the hidden conversion container
+    function isHiddenConversionForm(form) {
+        try {
+            var formElem = form.getFormElem && form.getFormElem();
+            if (!formElem || !formElem.length) return false;
+            
+            var nativeForm = formElem[0];
+            if (!nativeForm) return false;
+            
+            // Check if form is in the hidden conversion container
+            var hiddenContainer = document.getElementById('mkto-hidden-form-conversion');
+            if (hiddenContainer && hiddenContainer.contains(nativeForm)) {
+                debugLog("Skipping hidden conversion form:", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            // Also check via closest() method if available
+            if (nativeForm.closest && nativeForm.closest('#mkto-hidden-form-conversion')) {
+                debugLog("Skipping hidden conversion form (via closest):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            // Check for data attribute on container
+            var container = nativeForm.closest ? nativeForm.closest('.mkto-hidden-form-container') : null;
+            if (container && container.getAttribute('data-mkto-form-purpose') === 'hidden-conversion') {
+                debugLog("Skipping hidden conversion form (via data attribute):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            return false;
+        } catch (e) {
+            debugLog("Error checking if form is hidden:", e);
+            return false;
+        }
+    }
+
     // Function to set up form validation
     function setupFormValidation() {
         safelyExecuteMkto(function(form) {
+            // CRITICAL: Skip hidden conversion forms - they should be handled by their own script
+            if (isHiddenConversionForm(form)) {
+                debugLog("Skipping validation setup for hidden conversion form");
+                return;
+            }
+            
             // Check again at this point if the hardcoded script has already added a math question
             var existingMathQuestion = document.getElementById('math-question');
             if (existingMathQuestion && existingMathQuestion.name === 'mathQuestion') {
@@ -572,7 +615,9 @@
                 debugLog("Form object or onSubmit method not available");
             } */
 
-            if (form && typeof form.onSuccess === 'function') {
+            // CRITICAL: Only set up onSuccess for visible forms, not hidden conversion forms
+            // Hidden forms have their own onSuccess handlers that prevent navigation
+            if (form && typeof form.onSuccess === 'function' && !isHiddenConversionForm(form)) {
                 form.onSuccess(function(values, followUpUrl) {
                     try {
                         debugLog("Form submitted successfully", values);
@@ -593,6 +638,8 @@
                         return false;
                     }
                 });
+            } else if (isHiddenConversionForm(form)) {
+                debugLog("Skipping onSuccess setup for hidden conversion form - handled by its own script");
             } else {
                 debugLog("Form object or onSuccess method not available");
             }
