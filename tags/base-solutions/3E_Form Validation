@@ -2,9 +2,9 @@
 // Script Name: 3E_Form Validation
 // Author: Anthony Figgins
 // Description: Advanced Marketo form validation with 3E config integration, including name validation, EDU email validation, IP blocking, math questions, and comprehensive debugging.
-// Version: 7.3.0
+// Version: 7.3.1
 // Date Updated: 2025-12-19
-// Changes: Added hidden form container detection to skip validation for hidden conversion forms
+// Changes: Enhanced hidden form detection to check form element data attributes for more reliable identification
 
 (function() {
     // Check for the original hardcoded script by searching for "custom-marketo-validation" identifier
@@ -68,7 +68,7 @@
 
     // Log script name and version on load (only in debug mode)
     if (debugMode) {
-        console.log('[3E_Form Validation] v7.3.0');
+        console.log('[3E_Form Validation] v7.3.1');
         console.log("3E Form Validation Script Initialized with the following settings:");
         console.log("Enable Name Validation:", enableNameValidation);
         console.log("Enable Math Question Validation:", enableMathQuestion);
@@ -439,6 +439,10 @@
     }
 
     // Helper function to check if a form is in the hidden conversion container
+    // This function uses multiple detection methods for reliability:
+    // 1. Data attributes on the form element itself (most reliable)
+    // 2. Container ID check
+    // 3. Container class and data attribute check
     function isHiddenConversionForm(form) {
         try {
             var formElem = form.getFormElem && form.getFormElem();
@@ -447,23 +451,32 @@
             var nativeForm = formElem[0];
             if (!nativeForm) return false;
             
-            // Check if form is in the hidden conversion container
+            // METHOD 1: Check data attributes on the form element itself (most reliable)
+            // The conversion script sets these attributes directly on the form
+            var formType = nativeForm.getAttribute('data-mkto-form-type');
+            var formPurpose = nativeForm.getAttribute('data-mkto-form-purpose');
+            if (formType === 'hidden-conversion' || formPurpose === 'hidden-conversion') {
+                debugLog("Skipping hidden conversion form (via form data attributes):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            // METHOD 2: Check if form is in the hidden conversion container by ID
             var hiddenContainer = document.getElementById('mkto-hidden-form-conversion');
             if (hiddenContainer && hiddenContainer.contains(nativeForm)) {
-                debugLog("Skipping hidden conversion form:", nativeForm.id || 'no-id');
+                debugLog("Skipping hidden conversion form (via container ID):", nativeForm.id || 'no-id');
                 return true;
             }
             
-            // Also check via closest() method if available
+            // METHOD 3: Check via closest() method if available
             if (nativeForm.closest && nativeForm.closest('#mkto-hidden-form-conversion')) {
-                debugLog("Skipping hidden conversion form (via closest):", nativeForm.id || 'no-id');
+                debugLog("Skipping hidden conversion form (via closest ID):", nativeForm.id || 'no-id');
                 return true;
             }
             
-            // Check for data attribute on container
+            // METHOD 4: Check for data attribute on container
             var container = nativeForm.closest ? nativeForm.closest('.mkto-hidden-form-container') : null;
             if (container && container.getAttribute('data-mkto-form-purpose') === 'hidden-conversion') {
-                debugLog("Skipping hidden conversion form (via data attribute):", nativeForm.id || 'no-id');
+                debugLog("Skipping hidden conversion form (via container data attribute):", nativeForm.id || 'no-id');
                 return true;
             }
             

@@ -2,10 +2,10 @@
 // Script Name: 3E_3EI Recruiter Conversion
 // Author: Anthony Figgins
 // Description: Submits a hidden Marketo blind form on 3EI Recruiter email capture using 3E config; lazy-loads Forms2 and ensures tracking cookie.
-// Version: 2.4.1
-// Date Updated: 2025-12-19
+// Version: 2.3.3
+// Date Updated: 2024-12-19
 // Dependencies: 3E Config, Marketo Forms2
-// Changes: Added rfi_submission event push to dataLayer, improved error handling and logging
+// Changes: Changed event to rfi_submission with source: 'chatbot_conversion' to match visible forms, ensured placeholder attributes are always set
 
 (function () {
   'use strict';
@@ -41,7 +41,7 @@
 
   // Log script name and version on load (only in debug mode)
   if (MKTO_DEBUG) {
-    console.log('[3E_ChatBot Conversion] v2.4.1');
+    console.log('[3E_ChatBot Conversion] v2.3.3');
   }
 
   // === Validate required config values ===
@@ -182,7 +182,39 @@
           return;
         }
 
+        // CRITICAL: Create placeholder form element BEFORE calling loadForm
+        // This ensures the form has data attributes when Marketo initializes it
+        // Marketo's loadForm will attach to this existing element, preserving attributes
+        // This guarantees Form Validation can detect it as hidden before whenReady fires
+        var placeholderId = 'mktoForm_' + formIdNum;
+        var placeholder = ctr.querySelector('#' + placeholderId);
+        
+        if (!placeholder) {
+          placeholder = document.createElement('form');
+          placeholder.id = placeholderId;
+          placeholder.className = 'mktoForm mktoForm-hidden-conversion';
+          placeholder.setAttribute('data-mkto-form-type', 'hidden-conversion');
+          placeholder.setAttribute('data-mkto-form-purpose', 'hidden-conversion');
+          placeholder.style.visibility = 'hidden';
+          placeholder.style.position = 'absolute';
+          placeholder.style.left = '-9999px';
+          ctr.appendChild(placeholder);
+          
+          if (MKTO_DEBUG) {
+            console.log('[3E_ChatBot Conversion] Created placeholder form element with ID:', placeholderId);
+            console.log('[3E_ChatBot Conversion] Placeholder form attributes set for detection');
+          }
+        } else {
+          // Ensure attributes are set even if placeholder already exists
+          placeholder.setAttribute('data-mkto-form-type', 'hidden-conversion');
+          placeholder.setAttribute('data-mkto-form-purpose', 'hidden-conversion');
+          if (MKTO_DEBUG) {
+            console.log('[3E_ChatBot Conversion] Placeholder form already exists, ensured attributes are set:', placeholderId);
+          }
+        }
+
         // Load form into the hidden container
+        // Marketo will attach to the existing placeholder form element
         window.MktoForms2.loadForm(
           MKTO_BASE, 
           MKTO_ID, 
@@ -202,24 +234,57 @@
 
             if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Form loaded successfully');
 
-            // Get form element for verification
+            // Get form element for verification and marking
             var formElem = form.getFormElem && form.getFormElem();
             var nativeForm = formElem && formElem.length ? formElem[0] : null;
             
-            if (MKTO_DEBUG && nativeForm) {
-              console.log('[3E_ChatBot Conversion] Form ID:', nativeForm.id || 'no-id');
-              console.log('[3E_ChatBot Conversion] Form container verified');
+            // CRITICAL: Mark the form element with data attributes for reliable detection
+            // This ensures Form Validation can identify it as a hidden conversion form
+            if (nativeForm) {
+              try {
+                nativeForm.setAttribute('data-mkto-form-type', 'hidden-conversion');
+                nativeForm.setAttribute('data-mkto-form-purpose', 'hidden-conversion');
+                if (MKTO_DEBUG) {
+                  console.log('[3E_ChatBot Conversion] Form marked with data attributes for detection');
+                }
+              } catch (e) {
+                if (MKTO_DEBUG) {
+                  console.warn('[3E_ChatBot Conversion] Could not set form data attributes:', e);
+                }
+              }
+              
+              // Verify form is in our container
+              var inContainer = false;
+              if (nativeForm.closest && nativeForm.closest('#mkto-hidden-form-conversion')) {
+                inContainer = true;
+              } else if (ctr && ctr.contains && ctr.contains(nativeForm)) {
+                inContainer = true;
+              }
+              
+              if (MKTO_DEBUG) {
+                console.log('[3E_ChatBot Conversion] Form ID:', nativeForm.id || 'no-id');
+                console.log('[3E_ChatBot Conversion] Form in container:', inContainer);
+                console.log('[3E_ChatBot Conversion] Container ID:', ctr ? ctr.id : 'no-container');
+                if (!inContainer) {
+                  console.warn('[3E_ChatBot Conversion] WARNING: Form may not be in expected container!');
+                }
+              }
+            } else {
+              if (MKTO_DEBUG) {
+                console.warn('[3E_ChatBot Conversion] Could not get native form element');
+              }
             }
 
             if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Setting up handlers for our isolated form instance');
             
             // CRITICAL: Set up onSuccess handler immediately to prevent any navigation/redirect
             // Form Validation will skip this hidden form (see 3E_Form Validation script),
-            // so our handler will be the only one or will run first if somehow another handler exists
+            // so our handler will be the only one for this form instance
             // Returning false prevents default Marketo redirect behavior
             form.onSuccess(function (values, followUpUrl) {
               if (MKTO_DEBUG) {
-                console.log('[3E_ChatBot Conversion] Hidden form submitted successfully:', email);
+                console.log('[3E_ChatBot Conversion] Hidden form submitted successfully');
+                console.log('[3E_ChatBot Conversion] Email submitted:', email);
                 console.log('[3E_ChatBot Conversion] Form values:', values);
                 if (followUpUrl) {
                   console.log('[3E_ChatBot Conversion] Follow-up URL prevented:', followUpUrl);
@@ -227,12 +292,18 @@
               }
               
               // Push rfi_submission event to dataLayer for GTM tracking
-              // This matches the behavior of 3E_RFI Submit script for visible forms
+              // Both visible RFI forms and hidden chatbot forms push this event
+              // The 'source' property distinguishes chatbot-driven submissions
               try {
                 if (typeof window.dataLayer !== 'undefined') {
-                  window.dataLayer.push({ 'event': 'rfi_submission' });
+                  window.dataLayer.push({
+                    'event': 'rfi_submission',
+                    'email': values.Email || email || null,
+                    'formId': nativeForm ? (nativeForm.id || null) : null,
+                    'source': 'chatbot_conversion'
+                  });
                   if (MKTO_DEBUG) {
-                    console.log('[3E_ChatBot Conversion] Pushed rfi_submission event to dataLayer');
+                    console.log('[3E_ChatBot Conversion] Pushed rfi_submission event to dataLayer (source: chatbot_conversion)');
                   }
                 } else {
                   if (MKTO_DEBUG) {
@@ -285,16 +356,27 @@
               });
             }
 
-            // Set form values
+            // Set form values - must be done before submission
             try {
               form.vals({ Email: email });
-              if (MKTO_DEBUG) console.log('[3E_ChatBot Conversion] Email set in form:', email);
+              if (MKTO_DEBUG) {
+                console.log('[3E_ChatBot Conversion] Email set in form:', email);
+                // Verify the value was set
+                var setValues = form.vals();
+                if (MKTO_DEBUG && setValues) {
+                  console.log('[3E_ChatBot Conversion] Form values after setting:', setValues);
+                }
+              }
             } catch (e) {
-              if (MKTO_DEBUG) console.error('[3E_ChatBot Conversion] Error setting form values:', e);
+              if (MKTO_DEBUG) {
+                console.error('[3E_ChatBot Conversion] Error setting form values:', e);
+                console.error('[3E_ChatBot Conversion] Error stack:', e.stack);
+              }
               return;
             }
 
             // Wait for form to be fully rendered and ready before submitting
+            // The loadForm callback provides a form that should be ready, but we verify
             // This ensures all handlers are set up and form is submittable
             var submitAttempts = 0;
             var maxSubmitAttempts = 50; // 5 seconds max (50 * 100ms)
@@ -369,9 +451,12 @@
               }
             }
             
-            // Start submission attempt after a delay to ensure handlers are registered
-            // and Form Validation has had a chance to skip our form
-            setTimeout(attemptSubmit, 500);
+            // Start submission attempt after a delay to ensure:
+            // 1. Handlers are registered
+            // 2. Form Validation has had a chance to skip our form (if it runs)
+            // 3. Form is fully rendered in the DOM
+            // Using a small delay to allow any pending DOM operations to complete
+            setTimeout(attemptSubmit, 300);
           },
           ctr // Specify the container element for the hidden form
         );
