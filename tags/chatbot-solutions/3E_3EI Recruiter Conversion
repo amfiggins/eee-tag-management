@@ -3,7 +3,7 @@
 // Author: Anthony Figgins
 // Description: Submits a hidden Marketo blind form on 3EI Recruiter email capture using 3E config; lazy-loads Forms2 and ensures tracking cookie.
 // Version: 2.3.3
-// Date Updated: 2024-12-19
+// Date Updated: 2024-12-05
 // Dependencies: 3E Config, Marketo Forms2
 // Changes: Changed event to rfi_submission with source: 'chatbot_conversion' to match visible forms, ensured placeholder attributes are always set
 

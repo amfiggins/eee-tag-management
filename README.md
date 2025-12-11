@@ -31,12 +31,35 @@ start-web.bat
 ```
 
 This will automatically:
+- ✅ Check for updates (auto-update enabled by default)
 - ✅ Check for Node.js and Python
 - ✅ Install all dependencies
 - ✅ Start the web interface
 - ✅ Open in your browser
 
 See [QUICK_START.md](QUICK_START.md) for more details.
+
+### 🔄 Auto-Update Feature
+
+The tool now includes automatic update checking. When you run `start-web.py`, it automatically checks for newer versions and can update itself without requiring GitHub access.
+
+**Apply an available update:**
+```bash
+python start-web.py --update
+```
+
+**Check for updates:**
+```bash
+python start-web.py --check-update
+```
+
+**Disable auto-update:**
+```bash
+export GTM_AUTO_UPDATE=false
+python start-web.py
+```
+
+See [Auto-Update Setup Guide](docs/AUTO_UPDATE_SETUP.md) for detailed information.
 
 ## Repository Structure
 
@@ -76,6 +99,8 @@ eee-tag-management/
 - **[Automation Tools](automation/README.md)** - Command-line tools for updating tags
 - **[Web Interface](web/README.md)** - Web UI for managing tags (recommended)
 - **[Quick Start Guide](QUICK_START.md)** - Get started quickly
+- **[Auto-Update Setup](docs/AUTO_UPDATE_SETUP.md)** - Auto-update feature guide
+- **[Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md)** - Architecture and deployment options
 - **[Git Setup Guide](docs/GIT_SETUP.md)** - Repository setup and workflow
 
 ## Getting Started

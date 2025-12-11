@@ -4,8 +4,8 @@ GTM Tag Management Web Interface - Setup and Launch Script (Python)
 This script installs all dependencies and starts the web interface
 
 Author: Anthony Figgins
-Version: 1.0.0
-Date Updated: 2025-11-17
+Version: 1.1.0
+Date Updated: 2025-01-20
 """
 
 import os
@@ -14,6 +14,7 @@ import subprocess
 import platform
 import time
 import shutil
+import argparse
 from pathlib import Path
 
 # Colors for output (ANSI codes)
@@ -136,13 +137,120 @@ def find_python_executable():
     
     return None
 
+def check_for_updates(script_dir: Path, skip_update: bool = False):
+    """Check for updates if auto-update is enabled."""
+    # Check if auto-update is enabled (default: True, can be disabled via env var)
+    auto_update = os.getenv('GTM_AUTO_UPDATE', 'true').lower() == 'true'
+    
+    if skip_update or not auto_update:
+        return
+    
+    try:
+        # Import auto-updater module
+        automation_dir = script_dir / 'automation'
+        sys.path.insert(0, str(automation_dir))
+        from auto_updater import AutoUpdater
+        
+        print_colored("Checking for updates...", YELLOW)
+        updater = AutoUpdater(script_dir)
+        update_available, new_version = updater.check_and_update(force=False, auto_apply=False)
+        
+        if update_available:
+            print_colored(f"  ⬆️  Update available: {new_version}", YELLOW)
+            print_colored("  Run with --update to apply, or set GTM_AUTO_UPDATE=false to disable", YELLOW)
+            print()
+        else:
+            print_colored("  ✓ You are running the latest version", GREEN)
+            print()
+        
+        # Remove from path
+        if str(automation_dir) in sys.path:
+            sys.path.remove(str(automation_dir))
+    except ImportError:
+        # Auto-updater not available, skip silently
+        pass
+    except Exception as e:
+        # Don't block startup if update check fails
+        print_colored(f"  ⚠️  Update check failed: {e}", YELLOW)
+        print_colored("  Continuing with current version...", YELLOW)
+        print()
+
 def main():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='GTM Tag Management Web Interface',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        '--update',
+        action='store_true',
+        help='Apply available update and exit'
+    )
+    parser.add_argument(
+        '--check-update',
+        action='store_true',
+        help='Check for updates and exit'
+    )
+    parser.add_argument(
+        '--skip-update',
+        action='store_true',
+        help='Skip update check on startup'
+    )
+    parser.add_argument(
+        '--no-update',
+        action='store_true',
+        help='Disable auto-update (same as --skip-update)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Get script directory
+    script_dir = Path(__file__).parent.absolute()
+    
+    # Handle update commands
+    if args.update or args.check_update:
+        try:
+            automation_dir = script_dir / 'automation'
+            sys.path.insert(0, str(automation_dir))
+            from auto_updater import AutoUpdater
+            
+            updater = AutoUpdater(script_dir)
+            if args.update:
+                update_available, new_version = updater.check_and_update(force=True, auto_apply=True)
+                if update_available and new_version:
+                    print_colored("✓ Update applied successfully!", GREEN)
+                    print_colored("Please restart the application.", GREEN)
+                    sys.exit(0)
+                elif update_available:
+                    print_colored("❌ Update failed to apply", RED)
+                    sys.exit(1)
+                else:
+                    print_colored("✓ Already up to date", GREEN)
+                    sys.exit(0)
+            else:  # check-update
+                update_available, new_version = updater.check_and_update(force=True, auto_apply=False)
+                if update_available:
+                    print_colored(f"⬆️  Update available: {new_version}", YELLOW)
+                    print_colored("Run with --update to apply", YELLOW)
+                    sys.exit(1)
+                else:
+                    print_colored("✓ You are running the latest version", GREEN)
+                    sys.exit(0)
+        except ImportError:
+            print_colored("❌ Auto-updater not available", RED)
+            sys.exit(1)
+        except Exception as e:
+            print_colored(f"❌ Error: {e}", RED)
+            sys.exit(1)
+    
     print_colored("🚀 GTM Tag Management Web Interface", GREEN)
     print("==================================")
     print()
     
-    # Get script directory
-    script_dir = Path(__file__).parent.absolute()
+    # Check for updates (unless disabled)
+    if not args.skip_update and not args.no_update:
+        check_for_updates(script_dir, skip_update=False)
+    
     web_dir = script_dir / 'web'
     automation_dir = script_dir / 'automation'
     

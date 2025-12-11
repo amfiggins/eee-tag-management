@@ -3,7 +3,7 @@
 // Author: Anthony Figgins
 // Description: Advanced Marketo form validation with 3E config integration, including name validation, EDU email validation, IP blocking, math questions, and comprehensive debugging.
 // Version: 7.3.1
-// Date Updated: 2025-12-19
+// Date Updated: 2025-12-05
 // Changes: Enhanced hidden form detection to check form element data attributes for more reliable identification
 
 (function() {
