@@ -2,7 +2,7 @@
 // Script Name: 3E_RFI Submit
 // Author: Anthony Figgins
 // Description: Handles Marketo RFI form submission and 123FormBuilder form submission, pushes event to dataLayer, and manages redirect.
-// Version: 1.3.1
+// Version: 1.3.2
 // Date Updated: 2025-12-15
 // Dependencies: 3E Config, Marketo Forms2
 
@@ -58,7 +58,7 @@
 
   // Log script name and version on load (only in debug mode)
   if (DEBUG) {
-    console.log('[3E_RFI Submit] v1.3.1');
+    console.log('[3E_RFI Submit] v1.3.2');
   }
 
   // Function to push rfi_submission event (shared by both form types)
@@ -190,6 +190,7 @@
         var iframes = document.querySelectorAll('iframe');
         var form123FoundInIframe = false;
         
+        // First, loop through iframes to detect if any are 123FormBuilder forms
         for (var j = 0; j < iframes.length; j++) {
           var iframe = iframes[j];
           var iframeSrc = iframe.src || '';
@@ -201,13 +202,18 @@
             form123FoundInIframe = true;
             if (DEBUG) {
               console.log('[3E_RFI Submit] Found 123FormBuilder iframe:', iframe.src || iframe.id);
-              console.log('[3E_RFI Submit] Setting up postMessage listener for cross-origin communication');
             }
-            
-            // For cross-origin iframes, we can only use postMessage
-            // Set up the postMessage listener (only once, shared for all iframes)
-            setup123FormBuilderPostMessageListener();
           }
+        }
+        
+        // After detecting iframes, set up postMessage listener once if any were found
+        if (form123FoundInIframe) {
+          if (DEBUG) {
+            console.log('[3E_RFI Submit] Setting up postMessage listener for cross-origin communication');
+          }
+          // For cross-origin iframes, we can only use postMessage
+          // Set up the postMessage listener (only once, shared for all iframes)
+          setup123FormBuilderPostMessageListener();
         }
         
         // If no forms found and we haven't hit max attempts, retry
