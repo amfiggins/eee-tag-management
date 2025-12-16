@@ -75,7 +75,7 @@ pip3 install -r requirements-gtm.txt
 cd automation
 python3 gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/ui/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "YOUR_ACCOUNT_ID" \
   --credentials "gtm-service-account.json" \
   --dry-run
@@ -94,7 +94,7 @@ Once dry run works, test on a single container:
 ```bash
 python3 gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/ui/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "YOUR_ACCOUNT_ID" \
   --credentials "gtm-service-account.json" \
   --containers "GTM-XXXXX" \
@@ -135,7 +135,7 @@ cd automation
 # Dry run (safe - no changes)
 python3 gtm_tag_updater.py \
   --tag-name "TAG_NAME" \
-  --script-file "../tags/CATEGORY/TAG_FILE" \
+  --script-file "../tags/CATEGORY/TAG_FILE.html" \
   --account-id "YOUR_ACCOUNT_ID" \
   --credentials "gtm-service-account.json" \
   --dry-run
@@ -143,7 +143,7 @@ python3 gtm_tag_updater.py \
 # Update specific container (test)
 python3 gtm_tag_updater.py \
   --tag-name "TAG_NAME" \
-  --script-file "../tags/CATEGORY/TAG_FILE" \
+  --script-file "../tags/CATEGORY/TAG_FILE.html" \
   --account-id "YOUR_ACCOUNT_ID" \
   --credentials "gtm-service-account.json" \
   --containers "GTM-XXXXX" \
@@ -152,7 +152,7 @@ python3 gtm_tag_updater.py \
 # Update all containers (production)
 python3 gtm_tag_updater.py \
   --tag-name "TAG_NAME" \
-  --script-file "../tags/CATEGORY/TAG_FILE" \
+  --script-file "../tags/CATEGORY/TAG_FILE.html" \
   --account-id "YOUR_ACCOUNT_ID" \
   --credentials "gtm-service-account.json"
 ```

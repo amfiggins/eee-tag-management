@@ -41,7 +41,7 @@ To push an updated script to all GTM containers that have a specific tag, you ne
    ```bash
    python gtm_tag_updater.py \
      --tag-name "3E_Pop-up" \
-     --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+     --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
      --account-id "YOUR_ACCOUNT_ID" \
      --credentials "gtm-oauth-credentials.json" \
      --dry-run  # Remove this to actually update
@@ -152,7 +152,7 @@ Updates the tag across all containers in all accessible accounts.
 - **Tag Type**: Currently designed for Custom HTML tags
 - **Workspace**: Uses the default workspace in each container
 - **Dry Run**: Always test with `--dry-run` first!
-- **Script File Path**: Use relative paths from the automation folder (e.g., `"../tags/pop-up-solutions/3E_Pop-up"`)
+- **Script File Path**: Use relative paths from the automation folder (e.g., `"../tags/pop-up-solutions/3E_Pop-up.html"`). Tag files use .html extension.
 
 ## Files in Automation Folder
 

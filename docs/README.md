@@ -18,6 +18,9 @@ This directory contains comprehensive documentation for the GTM Tag Management p
 
 - **[GTM API Debug Summary](GTM_API_DEBUG_SUMMARY.md)** - Technical debugging information for GTM API issues
 - **[Cache System](../.cache/README.md)** - Server-side caching system documentation
+- **[Auto-Update Setup](AUTO_UPDATE_SETUP.md)** - Auto-update feature guide
+- **[Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md)** - Deployment architecture options
+- **[Documentation Review](DOCUMENTATION_REVIEW.md)** - Latest documentation review and cleanup summary
 
 ## System Features
 
@@ -45,7 +48,10 @@ This directory contains comprehensive documentation for the GTM Tag Management p
 
 ## Archived Documentation
 
-- **[archive/](../docs/archive/)** - Outdated planning and feature documents
+- **[archive/](archive/)** - Historical planning, implementation summaries, and outdated documents
+  - Web interface planning documents (historical)
+  - Implementation summaries (auto-update, cache fixes)
+  - Cache review documentation (historical)
 
 ## Related Documentation
 

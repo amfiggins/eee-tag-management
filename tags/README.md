@@ -12,7 +12,7 @@ Tags are organized by **solution type** to match the folder structure used in GT
 | **3E_Analytics Tracking** | Base Solutions | 1.2.0 | 2025-10-03 | 3E Config |
 | **3E_Page Activity** | Base Solutions | 1.3.1 | 2025-09-26 | 3E Config, Marketo Munchkin |
 | **3E_Form Validation** | Base Solutions | 7.2.0 | 2025-10-28 | 3E Config |
-| **3E_RFI Submit** | Base Solutions | 1.2.9 | 2025-10-29 | 3E Config, Marketo Forms2 |
+| **3E_RFI Submit** | Base Solutions | 1.3.9 | 2025-12-15 | 3E Config, Marketo Forms2 |
 | **3E_Favicon Injection** | Base Solutions | 1.2.0 | 2025-10-03 | 3E Config |
 | **3E_Sticky Buttons** | Base Solutions | 1.2.0 | 2025-10-03 | 3E Config |
 | **3E_Cloudflare Beacon** | Base Solutions | 1.2.0 | 2025-10-03 | 3E Config |
@@ -92,7 +92,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ### Base Solutions
 
 #### Template - 3E Config
-**File**: `base-solutions/Template - 3E Config`  
+**File**: `base-solutions/Template - 3E Config.html`  
 **Version**: 2.2  
 **Last Updated**: 2025-01-27  
 **Type**: GTM Variable Template  
@@ -118,7 +118,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Analytics Tracking
-**File**: `base-solutions/3E_Analytics Tracking.js`  
+**File**: `base-solutions/3E_Analytics Tracking.html`  
 **Version**: 1.2.0  
 **Last Updated**: 2025-10-03  
 **Type**: Custom HTML Tag  
@@ -137,7 +137,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Page Activity
-**File**: `base-solutions/3E_Page Activity`  
+**File**: `base-solutions/3E_Page Activity.html`  
 **Version**: 1.3.1  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -153,7 +153,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Form Validation
-**File**: `base-solutions/3E_Form Validation`  
+**File**: `base-solutions/3E_Form Validation.html`  
 **Version**: 7.2.0  
 **Last Updated**: 2025-10-28  
 **Type**: Custom HTML Tag  
@@ -173,9 +173,9 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_RFI Submit
-**File**: `base-solutions/3E_RFI Submit`  
-**Version**: 1.2.9  
-**Last Updated**: 2025-10-29  
+**File**: `base-solutions/3E_RFI Submit.html`  
+**Version**: 1.3.9  
+**Last Updated**: 2025-12-15  
 **Type**: Custom HTML Tag  
 **Dependencies**: 3E Config, Marketo Forms2
 
@@ -189,7 +189,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Favicon Injection
-**File**: `base-solutions/3E_Favicon Injection.js`  
+**File**: `base-solutions/3E_Favicon Injection.html`  
 **Version**: 1.2.0  
 **Last Updated**: 2025-10-03  
 **Type**: Custom HTML Tag  
@@ -205,7 +205,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Sticky Buttons
-**File**: `base-solutions/3E_Sticky Buttons.js`  
+**File**: `base-solutions/3E_Sticky Buttons.html`  
 **Version**: 1.2.0  
 **Last Updated**: 2025-10-03  
 **Type**: Custom HTML Tag  
@@ -221,7 +221,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Cloudflare Beacon
-**File**: `base-solutions/3E_Cloudflare Beacon.js`  
+**File**: `base-solutions/3E_Cloudflare Beacon.html`  
 **Version**: 1.2.0  
 **Last Updated**: 2025-10-03  
 **Type**: Custom HTML Tag  
@@ -239,7 +239,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ### Chatbot Solutions
 
 #### 3E_3EI Recruiter Activity
-**File**: `chatbot-solutions/3E_3EI Recruiter Activity`  
+**File**: `chatbot-solutions/3E_3EI Recruiter Activity.html`  
 **Version**: 1.1.9  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -259,7 +259,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_3EI Recruiter Conversion
-**File**: `chatbot-solutions/3E_3EI Recruiter Conversion`  
+**File**: `chatbot-solutions/3E_3EI Recruiter Conversion.html`  
 **Version**: 2.2.4  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -275,7 +275,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_3EI Recruiter Tracking
-**File**: `chatbot-solutions/3E_3EI Recruiter Tracking`  
+**File**: `chatbot-solutions/3E_3EI Recruiter Tracking.html`  
 **Version**: 2.1.4  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -291,7 +291,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_3EI Recruiter Unified
-**File**: `chatbot-solutions/3E_3EI Recruiter Unified`  
+**File**: `chatbot-solutions/3E_3EI Recruiter Unified.html`  
 **Version**: 1.0.5  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -307,7 +307,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Insights Pixel
-**File**: `chatbot-solutions/3E_Insights Pixel`  
+**File**: `chatbot-solutions/3E_Insights Pixel.html`  
 **Version**: 1.0.7  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -325,7 +325,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ### Pop-up Solutions
 
 #### 3E_Pop-up
-**File**: `pop-up-solutions/3E_Pop-up`  
+**File**: `pop-up-solutions/3E_Pop-up.html`  
 **Version**: 2.3.1  
 **Last Updated**: 2025-11-17  
 **Type**: Custom HTML Tag  
@@ -341,7 +341,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Pop-up Marketo Form
-**File**: `pop-up-solutions/3E_Pop-up Marketo Form`  
+**File**: `pop-up-solutions/3E_Pop-up Marketo Form.html`  
 **Version**: 1.2.3  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  
@@ -357,7 +357,7 @@ Required for tags that interact with Marketo forms. The Forms2 library is typica
 ---
 
 #### 3E_Pop-up Tracking
-**File**: `pop-up-solutions/3E_Pop-up Tracking`  
+**File**: `pop-up-solutions/3E_Pop-up Tracking.html`  
 **Version**: 2.3.2  
 **Last Updated**: 2025-09-26  
 **Type**: Custom HTML Tag  

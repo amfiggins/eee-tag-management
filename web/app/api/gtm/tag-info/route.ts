@@ -80,47 +80,47 @@ export async function POST(request: NextRequest) {
     const category = getTagCategory(tagName);
     
     // Try to find the tag file with fuzzy matching
-    // 1. Try exact match with repo tag name
-    // 2. Try exact match with original tag name
-    // 3. Try with .js extension
-    // 4. Try without .js extension (if tagName has .js)
+    // 1. Try exact match with repo tag name + .html
+    // 2. Try exact match with original tag name + .html
+    // 3. Try exact match without extension
+    // 4. Try with .html extension (if not already present)
     // 5. Try partial match (e.g., "3E_3EI Recruiter" matches "3E_3EI Recruiter Unified")
     
-    const normalizedRepoTagName = repoTagName.replace(/\.js$/, ''); // Remove .js if present
-    const normalizedTagName = tagName.replace(/\.js$/, ''); // Remove .js if present
+    const normalizedRepoTagName = repoTagName.replace(/\.(js|html)$/, ''); // Remove .js or .html if present
+    const normalizedTagName = tagName.replace(/\.(js|html)$/, ''); // Remove .js or .html if present
     
-    // Try exact match with repo tag name first (handles "3E_3EI Recruiter" -> "3E_3EI Recruiter Unified")
-    let tagFilePath = join(tagsDir, category, repoTagName);
-    let foundFileName = repoTagName;
+    // Try exact match with repo tag name + .html first (handles "3E_3EI Recruiter" -> "3E_3EI Recruiter Unified")
+    let tagFilePath = join(tagsDir, category, `${normalizedRepoTagName}.html`);
+    let foundFileName = `${normalizedRepoTagName}.html`;
     
     try {
       await readFile(tagFilePath, 'utf-8');
     } catch {
-      // Try exact match with original tag name
+      // Try exact match with original tag name + .html
       try {
-        tagFilePath = join(tagsDir, category, tagName);
+        tagFilePath = join(tagsDir, category, `${normalizedTagName}.html`);
         await readFile(tagFilePath, 'utf-8');
-        foundFileName = tagName;
+        foundFileName = `${normalizedTagName}.html`;
       } catch {
-        // Try without .js extension (repo tag name)
+        // Try exact match without extension (repo tag name)
         try {
           tagFilePath = join(tagsDir, category, normalizedRepoTagName);
           await readFile(tagFilePath, 'utf-8');
           foundFileName = normalizedRepoTagName;
         } catch {
-          // Try without .js extension (original tag name)
+          // Try exact match without extension (original tag name)
           try {
             tagFilePath = join(tagsDir, category, normalizedTagName);
             await readFile(tagFilePath, 'utf-8');
             foundFileName = normalizedTagName;
           } catch {
-            // Try with .js extension (repo tag name)
+            // Try with .html extension (repo tag name) - fallback for legacy
             try {
-              tagFilePath = join(tagsDir, category, `${normalizedRepoTagName}.js`);
+              tagFilePath = join(tagsDir, category, `${normalizedRepoTagName}.html`);
               await readFile(tagFilePath, 'utf-8');
-              foundFileName = `${normalizedRepoTagName}.js`;
+              foundFileName = `${normalizedRepoTagName}.html`;
             } catch {
-              // Try with .js extension (original tag name)
+              // Try with .js extension (original tag name) - legacy support
               try {
                 tagFilePath = join(tagsDir, category, `${normalizedTagName}.js`);
                 await readFile(tagFilePath, 'utf-8');
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
                   
                   // Find files that start with the normalized repo tag name or original tag name
                   const matchingFile = files.find(file => {
-                    const fileWithoutExt = file.replace(/\.js$/, '');
+                    const fileWithoutExt = file.replace(/\.(js|html)$/, '');
                     
                     // Check if repo tag name is a prefix of file name or vice versa
                     if (fileWithoutExt.startsWith(normalizedRepoTagName) || 
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
                       const files = await readdir(catPath);
                       
                       const matchingFile = files.find(file => {
-                        const fileWithoutExt = file.replace(/\.js$/, '');
+                        const fileWithoutExt = file.replace(/\.(js|html)$/, '');
                         
                         // Check if repo tag name matches
                         if (fileWithoutExt.startsWith(normalizedRepoTagName) || 
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         tag: {
-          name: foundFileName.replace(/\.js$/, ''), // Return name without .js
+          name: foundFileName.replace(/\.(js|html)$/, ''), // Return name without .js or .html
           category,
           version: versionInfo?.version || 'Unknown',
           dateUpdated: versionInfo?.dateUpdated || 'Unknown',

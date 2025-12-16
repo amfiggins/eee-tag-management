@@ -1,0 +1,89 @@
+<script>
+// Script Name: 3E_Pop-up
+// Author: Anthony Figgins
+// Description: Injects vendor popup snippet from 3E config (popupTag). Skips if disabled, absent or already injected. Only appends DOM elements (not comments/whitespace).
+// Version: 2.3.1
+// Date Updated: 2025-11-17
+// Dependencies: 3E Config
+
+(function(){
+  'use strict';
+  var CFG;
+  try { CFG = {{3E config}}; } catch(e){ CFG = {}; }
+  
+  // Log script name and version on load (only in debug mode)
+  var DEBUG = CFG && CFG.debugMode === 'true';
+  
+  if (DEBUG) {
+    console.log('[3E_Pop-up] v2.3.1');
+  }
+  
+  // Check if popup is enabled
+  var popupEnabled = CFG && CFG.popupEnvironment === 'enabled';
+  if (!popupEnabled) {
+    if (DEBUG) { 
+      console.log('[3E Pop-up] Popup disabled via popupEnvironment setting:', CFG.popupEnvironment || 'disabled');
+    }
+    return;
+  }
+  
+  var snippet = CFG && CFG.popupTag ? String(CFG.popupTag) : '';
+  if (!snippet) {
+    if (DEBUG) { console.log('[3E Pop-up] No popupTag in config'); }
+    return;
+  }
+
+  if (window.__3E_POPUP_INJECTED__) return;
+  window.__3E_POPUP_INJECTED__ = 1;
+
+  // Build a container for any non-script markup in the snippet
+  var div = document.createElement('div');
+  div.setAttribute('data-3e','popup');
+  div.innerHTML = snippet;
+
+  // Execute any <script> tags found inside the snippet
+  var scripts = div.querySelectorAll('script');
+  for (var i=0; i<scripts.length; i++){
+    var s = scripts[i];
+    var ns = document.createElement('script');
+
+    // Copy attributes (src, type, async, etc.)
+    for (var a=0; a<s.attributes.length; a++){
+      var attr = s.attributes[a];
+      ns.setAttribute(attr.name, attr.value);
+    }
+    ns.type = s.type || 'text/javascript';
+
+    if (s.src){
+      ns.async = true;
+      document.head.appendChild(ns);
+    } else {
+      ns.text = s.text || s.innerHTML || '';
+      document.head.appendChild(ns);
+    }
+  }
+
+  // Remove executed scripts from the container to avoid duplication
+  for (var j=scripts.length-1; j>=0; j--) {
+    if (scripts[j] && scripts[j].parentNode) scripts[j].parentNode.removeChild(scripts[j]);
+  }
+
+  // Append any remaining DOM from the vendor snippet (e.g., styles, containers)
+  // Only append if there are actual element nodes (not just text/comment nodes)
+  var hasElements = false;
+  if (div.childNodes && div.childNodes.length) {
+    for (var k=0; k<div.childNodes.length; k++) {
+      var node = div.childNodes[k];
+      // Check if it's an actual element node (not text or comment)
+      if (node.nodeType === 1) {
+        hasElements = true;
+        break;
+      }
+    }
+  }
+  
+  if (hasElements) {
+    document.body.appendChild(div);
+  }
+})();
+</script>

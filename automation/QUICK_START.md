@@ -45,7 +45,7 @@
 cd automation
 python3 gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/ui/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "4702086067" \
   --credentials "gtm-oauth-credentials.json" \
   --dry-run

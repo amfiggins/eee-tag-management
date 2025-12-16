@@ -1,0 +1,361 @@
+<script>
+// Script Name: 3E_RFI Submit
+// Author: Anthony Figgins
+// Description: Handles Marketo RFI form submission and 123FormBuilder form submission, pushes event to dataLayer, and manages redirect.
+// Version: 1.4.4
+// Date Updated: 2025-12-15
+// Dependencies: 3E Config, Marketo Forms2
+
+  (function() {
+    // Check for hardcoded RFI submit script (minified inline script)
+    var hasHardcodedRFI = false;
+    var scripts = document.getElementsByTagName('script');
+    
+    for (var i = 0; i < scripts.length; i++) {
+      var scriptText = scripts[i].textContent || '';
+      
+      // Look for unique identifier from the minified combined script
+      // This script uses google_tag_manager["rm"]["227984193"](69) pattern
+      if (scriptText.indexOf('google_tag_manager["rm"]["227984193"]') !== -1) {
+        hasHardcodedRFI = true;
+        console.log('[3E_RFI Submit] Hardcoded combined script detected (google_tag_manager pattern)');
+        break;
+      }
+      
+      // Also check for scripts that push rfi_submission but don't have our GTM identifiers
+      if (scriptText.indexOf('dataLayer.push({event:"rfi_submission"})') !== -1 || 
+          scriptText.indexOf("dataLayer.push({event:'rfi_submission'})") !== -1 ||
+          scriptText.indexOf('dataLayer.push({"event":"rfi_submission"})') !== -1 ||
+          scriptText.indexOf("dataLayer.push({'event':'rfi_submission'})") !== -1) {
+        // Check if it's NOT our GTM script (which has unique identifiers)
+        if (scriptText.indexOf('[3E_RFI Submit]') === -1 && 
+            scriptText.indexOf('{{3E config}}') === -1 &&
+            scriptText.indexOf('checkMktoForm(attempts)') === -1 &&
+            scriptText.indexOf('function checkMktoForm') === -1) {
+          hasHardcodedRFI = true;
+          console.log('[3E_RFI Submit] Hardcoded RFI submit script detected (pushes rfi_submission without GTM identifiers)');
+          break;
+        }
+      }
+    }
+
+  // Get debug mode from 3E Config (shared for both form types)
+  var CFG;
+  try { 
+    CFG = {{3E config}}; 
+  } catch(e) { 
+    CFG = {}; 
+  }
+  var DEBUG = CFG && CFG.debugMode === 'true';
+
+  // Ensure dataLayer exists
+  window.dataLayer = window.dataLayer || [];
+
+  // Log script name and version on load (only in debug mode)
+  if (DEBUG) {
+    console.log('[3E_RFI Submit] v1.4.3');
+  }
+
+  // Function to push rfi_submission event (shared by both form types)
+  function pushRFISubmissionEvent() {
+    window.dataLayer.push({'event': 'rfi_submission'});
+    if (DEBUG) {
+      console.log('[3E_RFI Submit] Pushed rfi_submission event to dataLayer');
+    }
+  }
+
+  // Marketo Form Handler - only run if no hardcoded script detected
+  if (!hasHardcodedRFI) {
+    (function checkMktoForm(attempts) {
+      // Check if MktoForms2 is available
+      if (typeof MktoForms2 !== 'undefined') {
+        MktoForms2.whenReady(function(form) {
+          if (DEBUG) {
+            console.log('[3E_RFI Submit] Marketo form detected and ready');
+          }
+          form.onSuccess(function(values, followUpUrl) {
+            // Push the event to the dataLayer
+            pushRFISubmissionEvent();
+
+            // Redirect to the Thank You page
+            if (followUpUrl) {
+              window.location.href = followUpUrl;
+            }
+
+            // Prevent the default Marketo redirect behavior
+            return false;
+          });
+        });
+      } else if (attempts < 10) {
+        // Retry after 1 second if MktoForms2 is not available and we haven't hit the max attempts
+        setTimeout(function() {
+          checkMktoForm(attempts + 1);
+        }, 1000);
+      } else {
+        // If MktoForms2 is not available after 10 attempts, log an error (only in debug mode)
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] MktoForms2 is not defined. Marketo forms failed to load after 10 attempts.');
+        }
+      }
+    })(0); // Start with 0 attempts
+  } else {
+    // Hardcoded script detected - skip Marketo handler but continue with 123FormBuilder detection
+    if (DEBUG) {
+      console.log('[3E_RFI Submit] Hardcoded script detected - skipping Marketo handler, continuing with 123FormBuilder detection');
+    }
+  }
+
+  // 123FormBuilder trusted origins for postMessage validation
+  var TRUSTED_123FORMBUILDER_ORIGINS = {
+    'https://form.123formbuilder.com': true,
+    'https://www.123formbuilder.com': true,
+    'https://123formbuilder.com': true,
+    'http://form.123formbuilder.com': true
+  };
+
+  // Function to validate postMessage origin
+  function isTrusted123FormBuilderOrigin(origin) {
+    if (!origin) return false;
+    return TRUSTED_123FORMBUILDER_ORIGINS[origin] === true;
+  }
+
+  // Function to check if URL matches thank you page patterns
+  function isThankYouPage(url) {
+    if (!url || typeof url !== 'string') return false;
+    var urlLower = url.toLowerCase();
+    // Check for 123FormBuilder thank you page patterns
+    return urlLower.indexOf('sfnew2.php') !== -1 ||
+           urlLower.indexOf('redirect=true') !== -1 ||
+           urlLower.indexOf('appsubmit') !== -1 ||
+           (urlLower.indexOf('123formbuilder.com') !== -1 && (
+             urlLower.indexOf('thank') !== -1 ||
+             urlLower.indexOf('success') !== -1 ||
+             urlLower.indexOf('submitted') !== -1 ||
+             urlLower.indexOf('complete') !== -1
+           ));
+  }
+
+  // Set up postMessage listener for cross-origin 123FormBuilder iframes (only set up once)
+  var postMessageListenerSetup = false;
+  var scrollToTopDetected = false; // Guard flag to prevent duplicate triggers
+  function setup123FormBuilderPostMessageListener() {
+    if (postMessageListenerSetup) return;
+    postMessageListenerSetup = true;
+    
+    window.addEventListener('message', function(event) {
+      // Validate origin for security - only accept messages from trusted 123FormBuilder domains
+      if (!isTrusted123FormBuilderOrigin(event.origin)) {
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] Rejected postMessage from untrusted origin:', event.origin);
+        }
+        return;
+      }
+      
+      // Diagnostic logging: Log ALL postMessage events from trusted 123FormBuilder origins
+      if (DEBUG) {
+        try {
+          console.log('[3E_RFI Submit] postMessage received from trusted 123FormBuilder origin:', event.origin);
+          console.log('[3E_RFI Submit] postMessage event.data:', JSON.stringify(event.data, null, 2));
+          console.log('[3E_RFI Submit] postMessage event.data.type:', event.data && event.data.type ? event.data.type : 'undefined');
+          console.log('[3E_RFI Submit] postMessage event.data.message_type:', event.data && event.data.message_type ? event.data.message_type : 'undefined');
+          console.log('[3E_RFI Submit] postMessage event.data.message_content:', event.data && event.data.message_content ? event.data.message_content : 'undefined');
+        } catch (e) {
+          console.log('[3E_RFI Submit] Error logging postMessage data:', e);
+          console.log('[3E_RFI Submit] postMessage event.data (raw):', event.data);
+        }
+      }
+      
+      // Primary detection: Check for scrollToTop message (123FormBuilder sends this right before parent page navigation)
+      if (event.data && event.data.message_type === 'event' && event.data.message_content === 'scrollToTop' && !scrollToTopDetected) {
+        scrollToTopDetected = true; // Set flag to prevent duplicate triggers
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] Received scrollToTop postMessage from trusted 123FormBuilder iframe (form submission detected):', event.origin);
+        }
+        pushRFISubmissionEvent();
+        return; // Exit early after handling scrollToTop
+      }
+      
+      // Fallback detection: Check if message indicates form success - 123FormBuilder sends redirectTo type when form is submitted
+      if (event.data && event.data.type === 'redirectTo' && event.data.url) {
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] Received redirectTo postMessage from trusted 123FormBuilder iframe (form submission detected):', event.origin, '- URL:', event.data.url);
+        }
+        pushRFISubmissionEvent();
+      }
+    }, false);
+    
+    if (DEBUG) {
+      console.log('[3E_RFI Submit] PostMessage listener set up for 123FormBuilder cross-origin iframes');
+    }
+  }
+
+  // 123FormBuilder Form Handler
+  (function check123FormBuilder(attempts) {
+    try {
+      // Look for 123FormBuilder form elements (typically have IDs like #cf_1, #cf_2, etc.)
+      var form123Elements = document.querySelectorAll('[id^="cf_"]');
+      
+      if (form123Elements.length > 0) {
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] Found', form123Elements.length, 'potential 123FormBuilder form(s)');
+        }
+        
+        // Attach success event listeners to each form
+        for (var i = 0; i < form123Elements.length; i++) {
+          var formElement = form123Elements[i];
+          
+          // Listen for success event (123FormBuilder fires this on successful submission)
+          formElement.addEventListener('success', function(e) {
+            if (DEBUG) {
+              console.log('[3E_RFI Submit] 123FormBuilder form success event detected');
+            }
+            // Push the event to the dataLayer
+            pushRFISubmissionEvent();
+          }, false);
+          
+          // Also listen for custom events that might be fired
+          // Some 123FormBuilder implementations use different event names
+          formElement.addEventListener('formSuccess', function(e) {
+            if (DEBUG) {
+              console.log('[3E_RFI Submit] 123FormBuilder formSuccess event detected');
+            }
+            pushRFISubmissionEvent();
+          }, false);
+          
+          if (DEBUG) {
+            console.log('[3E_RFI Submit] Attached event listeners to 123FormBuilder form:', formElement.id);
+          }
+        }
+      } else {
+        // Check for 123FormBuilder forms in iframes (cross-origin handling)
+        var iframes = document.querySelectorAll('iframe');
+        var form123FoundInIframe = false;
+        
+        // First, loop through iframes to detect if any are 123FormBuilder forms
+        for (var j = 0; j < iframes.length; j++) {
+          var iframe = iframes[j];
+          var iframeSrc = iframe.src || '';
+          
+          // Check if iframe contains 123FormBuilder (common patterns)
+          if (iframeSrc.indexOf('123formbuilder.com') !== -1 || 
+              iframeSrc.indexOf('123formbuilder') !== -1 ||
+              iframe.id && iframe.id.indexOf('cf_') !== -1) {
+            form123FoundInIframe = true;
+            if (DEBUG) {
+              console.log('[3E_RFI Submit] Found 123FormBuilder iframe:', iframe.src || iframe.id);
+            }
+          }
+        }
+        
+        // After detecting iframes, set up postMessage listener once if any were found
+        if (form123FoundInIframe) {
+          if (DEBUG) {
+            console.log('[3E_RFI Submit] Setting up postMessage listener for cross-origin communication');
+          }
+          // For cross-origin iframes, we can only use postMessage
+          // Set up the postMessage listener (only once, shared for all iframes)
+          setup123FormBuilderPostMessageListener();
+          
+          // Set up iframe src monitoring for each 123FormBuilder iframe
+          // Loop through iframes again to set up MutationObserver for each one
+          for (var k = 0; k < iframes.length; k++) {
+            (function(iframeRef) {
+              var iframe = iframeRef;
+              var iframeSrc = iframe.src || '';
+              
+              // Only monitor 123FormBuilder iframes
+              if (iframeSrc.indexOf('123formbuilder.com') !== -1 || 
+                  iframeSrc.indexOf('123formbuilder') !== -1 ||
+                  iframe.id && iframe.id.indexOf('cf_') !== -1) {
+                
+                // Store initial src value
+                var initialSrc = iframe.src || '';
+                var iframeId = iframe.id || 'iframe-' + k;
+                
+                if (DEBUG) {
+                  console.log('[3E_RFI Submit] Setting up src monitoring for 123FormBuilder iframe:', iframeId, 'Initial src:', initialSrc);
+                }
+                
+                // Skip initial src check if we're already on a thank you page (prevents duplicate trigger)
+                // The scrollToTop detection already handles form submissions correctly on the form page
+                if (isThankYouPage(window.location.href)) {
+                  if (DEBUG) {
+                    console.log('[3E_RFI Submit] Already on thank you page, skipping initial iframe src check to prevent duplicate event');
+                  }
+                  return; // Skip the initial src check to prevent duplicate event
+                }
+                
+                // Check initial src for thank you page (in case form was already submitted)
+                if (isThankYouPage(initialSrc)) {
+                  if (DEBUG) {
+                    console.log('[3E_RFI Submit] Initial iframe src already matches thank you page pattern:', initialSrc);
+                  }
+                  pushRFISubmissionEvent();
+                  return; // Don't set up observer if already on thank you page
+                }
+                
+                // Set up MutationObserver to watch for src attribute changes
+                var observer = new MutationObserver(function(mutations) {
+                  mutations.forEach(function(mutation) {
+                    if (mutation.type === 'attributes' && mutation.attributeName === 'src') {
+                      var newSrc = iframe.src || '';
+                      
+                      if (DEBUG) {
+                        console.log('[3E_RFI Submit] Iframe src changed:', iframeId, 'New src:', newSrc);
+                      }
+                      
+                      // Check if new src matches thank you page patterns
+                      if (isThankYouPage(newSrc)) {
+                        if (DEBUG) {
+                          console.log('[3E_RFI Submit] Thank you page pattern detected in iframe src:', iframeId, 'URL:', newSrc);
+                        }
+                        pushRFISubmissionEvent();
+                        // Disconnect observer to prevent duplicate triggers
+                        observer.disconnect();
+                        if (DEBUG) {
+                          console.log('[3E_RFI Submit] Disconnected MutationObserver for iframe:', iframeId);
+                        }
+                      }
+                    }
+                  });
+                });
+                
+                // Start observing the iframe for src attribute changes
+                observer.observe(iframe, {
+                  attributes: true,
+                  attributeFilter: ['src']
+                });
+                
+                if (DEBUG) {
+                  console.log('[3E_RFI Submit] MutationObserver set up for iframe:', iframeId);
+                }
+              }
+            })(iframes[k]);
+          }
+        }
+        
+        // If no forms found and we haven't hit max attempts, retry
+        if (form123Elements.length === 0 && !form123FoundInIframe && attempts < 10) {
+          setTimeout(function() {
+            check123FormBuilder(attempts + 1);
+          }, 1000);
+        } else if (attempts >= 10 && form123Elements.length === 0 && !form123FoundInIframe) {
+          if (DEBUG) {
+            console.log('[3E_RFI Submit] 123FormBuilder forms not found after 10 attempts');
+          }
+        }
+      }
+    } catch (e) {
+      if (DEBUG) {
+        console.error('[3E_RFI Submit] Error checking for 123FormBuilder forms:', e);
+      }
+      // Retry if we haven't hit max attempts
+      if (attempts < 10) {
+        setTimeout(function() {
+          check123FormBuilder(attempts + 1);
+        }, 1000);
+      }
+    }
+  })(0); // Start with 0 attempts
+  })(); // Close outer detection wrapper
+</script>

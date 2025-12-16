@@ -1,0 +1,676 @@
+<script>
+// Script Name: 3E_Form Validation
+// Author: Anthony Figgins
+// Description: Advanced Marketo form validation with 3E config integration, including name validation, EDU email validation, IP blocking, math questions, and comprehensive debugging.
+// Version: 7.3.1
+// Date Updated: 2025-12-05
+// Changes: Enhanced hidden form detection to check form element data attributes for more reliable identification
+
+(function() {
+    // Check for the original hardcoded script by searching for "custom-marketo-validation" identifier
+    var hasCustomValidation = false;
+    var scripts = document.getElementsByTagName('script');
+    
+    for (var i = 0; i < scripts.length; i++) {
+        var scriptSrc = scripts[i].src || '';
+        var scriptText = scripts[i].textContent || '';
+        
+        // Look for the custom-marketo-validation identifier in the src
+        if (scriptSrc.indexOf('custom-marketo-validation') !== -1) {
+            // Check if it has "" before and after (indicating it's commented out/invalid)
+            var scriptSrcLength = scriptSrc.length;
+            var hasLeadingQuotes = scriptSrc.charAt(0) === '"' && scriptSrc.charAt(1) === '"';
+            var hasTrailingQuotes = scriptSrc.charAt(scriptSrcLength - 1) === '"' && scriptSrc.charAt(scriptSrcLength - 2) === '"';
+            
+            // If it has both leading and trailing "", it's not actually running (commented out)
+            if (hasLeadingQuotes && hasTrailingQuotes) {
+                console.log('[3E Form Validation] Found custom-marketo-validation script but it appears to be commented out (has "" quotes)');
+                hasCustomValidation = false; // Don't block execution
+            } else {
+                // It doesn't have the "" quotes, so it's running
+                hasCustomValidation = true;
+                console.log('[3E Form Validation] Original hardcoded script detected (custom-marketo-validation in src)');
+                break;
+            }
+        }
+    }
+    
+    if (hasCustomValidation) {
+        console.log('[3E Form Validation] Skipping execution - hardcoded script found');
+        return;
+    }
+    
+    // Check if older version of the script is already running
+    if (window.marketoValidationScriptLoaded) { 
+        console.log('[3E Form Validation] Older version detected, skipping execution');
+        return;
+    }
+    
+    // Mark this script as loaded to prevent duplicates
+    window.marketoValidationScriptLoaded = true;
+    
+    // Pull configuration from 3E Config variable
+    var CFG;
+    try { 
+        CFG = {{3E config}}; 
+    } catch(e) { 
+        console.error('[3E Form Validation] Failed to load 3E config:', e);
+        CFG = {}; 
+    }
+
+    // Configuration options from 3E config with fallbacks
+    var enableNameValidation = CFG.formNameValidation === 'true';
+    var enableMathQuestion = CFG.formMathValidation === 'true';
+    var preventDefaultNames = CFG.formPreventDefaultName === 'true';
+    var enableIPBlocking = CFG.formIpBlocking === 'true';
+    var enableEduValidation = CFG.formEduValidation === 'true';
+    var debugMode = CFG.debugMode === 'true';
+
+    // Log script name and version on load (only in debug mode)
+    if (debugMode) {
+        console.log('[3E_Form Validation] v7.3.1');
+        console.log("3E Form Validation Script Initialized with the following settings:");
+        console.log("Enable Name Validation:", enableNameValidation);
+        console.log("Enable Math Question Validation:", enableMathQuestion);
+        console.log("Prevent Default Names Validation:", preventDefaultNames);
+        console.log("Enable IP Blocking Validation:", enableIPBlocking);
+        console.log("Enable EDU Email Validation:", enableEduValidation);
+        console.log("Debug Mode:", debugMode);
+    }
+
+    // Check if the current URL contains "unsub"
+    if (window.location.href.toLowerCase().indexOf("unsub") !== -1) {
+        if (debugMode) console.log("3E Form Validation: Skipping validation on 'unsub' pages.");
+        return; // Exit the script if "unsub" is found in the URL
+    }
+
+    // Debug logging function
+    function debugLog(message, data) {
+        if (debugMode) {
+            if (data) {
+                console.log('[3E Form Validation]', message, data);
+            } else {
+                console.log('[3E Form Validation]', message);
+            }
+        }
+    }
+
+    // Global error handler to prevent page refreshes
+    window.addEventListener('error', function(event) {
+        if (event.message && event.message.indexOf('3E Form Validation') !== -1) {
+            debugLog("Global error caught:", event.error);
+            event.preventDefault();
+            return false;
+        }
+    });
+
+    // Prevent unhandled promise rejections from causing page refreshes
+    window.addEventListener('unhandledrejection', function(event) {
+        if (event.reason && event.reason.toString().indexOf('3E Form Validation') !== -1) {
+            debugLog("Unhandled promise rejection caught:", event.reason);
+            event.preventDefault();
+        }
+    });
+
+    // Function to ensure MktoForms2 is loaded and form is ready
+    function safelyExecuteMkto(callback) {
+        if (typeof MktoForms2 !== 'undefined' && MktoForms2.whenReady) {
+            MktoForms2.whenReady(callback);
+        } else {
+            // Retry after a delay if MktoForms2 is not yet available
+            debugLog("MktoForms2 not available, retrying...");
+            setTimeout(function() {
+                safelyExecuteMkto(callback);
+            }, 500);
+        }
+    }
+
+    // Function to inject custom CSS styles
+    function addCustomStyles() {
+        var style = document.createElement('style');
+        style.type = 'text/css';
+        style.innerHTML = 
+            '.mktoCaptchaDisclaimer { padding-top: 15px; padding-bottom: 15px; }' +
+            '#form-error-container {' +
+                'color: red;' +
+                'margin-bottom: 10px;' +
+                'background-color: white;' +
+                'padding: 10px;' +
+                'border-radius: 4px;' +
+            '}' +
+            '#math-question { pointer-events: auto !important; }' +
+            '#math-question.mktoInvalid { border-color: inherit !important; }' +
+            '.mktoForm #math-question ~ .mktoError { display: none !important; }' +
+            '#math-question + label[for="math-question"], label[for="math-question"] + #math-question { margin-bottom: 10px !important; }' +
+            '#math-question { margin-bottom: 10px !important; }';
+        document.head.appendChild(style);
+    }
+
+    // Function to fetch the user's IP address
+    function fetchUserIP() {
+        return new Promise(function(resolve, reject) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', 'https://api.ipify.org?format=json', true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            resolve(data.ip);
+                        } catch (error) {
+                            console.error("Error parsing IP response:", error);
+                            resolve(null);
+                        }
+                    } else {
+                        console.error("Error fetching IP address:", xhr.status);
+                        resolve(null);
+                    }
+                }
+            };
+            xhr.onerror = function() {
+                console.error("Error fetching IP address: Network error");
+                resolve(null);
+            };
+            xhr.send();
+        });
+    }
+
+    // Function to fetch blocked IP addresses from Google Sheets
+    function fetchBlockedIPs() {
+        return new Promise(function(resolve, reject) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQY0866rYIoy160-tNe-wAvH_ryqX3R5ElFNren-jrvLdgjRbHUKEFTEDaaALmjkdRWHpyu3E6f_v39/pub?output=csv', true);
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var text = xhr.responseText;
+                            var ips = text.split("\n");
+                            var trimmedIPs = [];
+                            for (var i = 0; i < ips.length; i++) {
+                                trimmedIPs.push(ips[i].trim());
+                            }
+                            resolve(trimmedIPs);
+                        } catch (error) {
+                            console.error("Error parsing blocked IPs:", error);
+                            resolve([]);
+                        }
+                    } else {
+                        console.error("Error fetching blocked IP addresses:", xhr.status);
+                        resolve([]);
+                    }
+                }
+            };
+            xhr.onerror = function() {
+                console.error("Error fetching blocked IP addresses: Network error");
+                resolve([]);
+            };
+            xhr.send();
+        });
+    }
+
+    // Function to check if the user's IP is blocked
+    function checkAndBlockIP(form) {
+        if (!enableIPBlocking) return;
+
+        fetchUserIP().then(function(userIP) {
+            if (!userIP) return;
+
+            fetchBlockedIPs().then(function(blockedIPs) {
+                var isBlocked = false;
+                for (var i = 0; i < blockedIPs.length; i++) {
+                    if (blockedIPs[i] === userIP) {
+                        isBlocked = true;
+                        break;
+                    }
+                }
+                
+                if (isBlocked) {
+                    // Disable form and show error if IP is blocked
+                    disableFormWithError(form, "This form cannot be submitted at this time.");
+                    debugLog("User's IP is blocked:", userIP);
+                }
+            });
+        });
+    }
+
+    // Function to validate .edu email domain
+    function validateEduEmail(email) {
+        if (!enableEduValidation) return true; // Skip validation if disabled
+        
+        if (!email || typeof email !== 'string') return false;
+        
+        // Check if email ends with .edu (case insensitive)
+        var isEduEmail = email.toLowerCase().endsWith('.edu');
+        debugLog("EDU email validation:", { email: email, isValid: isEduEmail });
+        return isEduEmail;
+    }
+
+    // Function to disable the form and display an error message
+    function disableFormWithError(form, message) {
+        form.getFormElem().find("button.mktoButton").attr("disabled", true);
+        displayErrors(form.getFormElem()[0], [message]);
+    }
+
+    // Function to generate a random math question with numbers between 1 and 5
+    function generateMathQuestion() {
+        var num1 = Math.floor(Math.random() * 5) + 1;
+        var num2 = Math.floor(Math.random() * 5) + 1;
+        var correctAnswer = num1 + num2;
+        var wrongAnswers = [correctAnswer + 1, correctAnswer - 1, correctAnswer + 2];
+        var options = wrongAnswers.concat([correctAnswer]);
+
+        // Shuffle the options array
+        for (var i = options.length - 1; i > 0; i--) {
+            var j = Math.floor(Math.random() * (i + 1));
+            var temp = options[i];
+            options[i] = options[j];
+            options[j] = temp;
+        }
+
+        return {
+            question: "What is " + num1 + " + " + num2 + "?",
+            options: options,
+            correctAnswer: correctAnswer.toString()
+        };
+    }
+
+
+    // Function to add the math question field to the form (simplified version matching original)
+    function addMathQuestionField(form) {
+        if (!enableMathQuestion) {
+            debugLog("Math question validation disabled, skipping field creation");
+            return; // Skip adding the math question if it's disabled
+        }
+
+        var formElement = form.getFormElem()[0];
+        
+        // Check if math question field already exists (prevent duplicates from footer script)
+        var existingMathQuestion = document.getElementById('math-question');
+        if (existingMathQuestion) {
+            debugLog("Math question field already exists, skipping creation to prevent duplicates");
+            return;
+        }
+
+        debugLog("Adding math question field to form");
+        var mathQuestion = generateMathQuestion();
+        debugLog("Generated math question:", mathQuestion);
+        
+        // Check if labels are hidden by looking at existing Marketo labels
+        var existingLabel = formElement.querySelector('label.mktoLabel');
+        var labelsAreHidden = false;
+        
+        if (existingLabel) {
+            var labelStyles = window.getComputedStyle(existingLabel);
+            var displayValue = labelStyles.display || '';
+            var visibilityValue = labelStyles.visibility || '';
+            labelsAreHidden = displayValue === 'none' || visibilityValue === 'hidden';
+            debugLog("Label visibility check:", { display: displayValue, visibility: visibilityValue, labelsAreHidden: labelsAreHidden });
+        }
+
+        var selectField = document.createElement('select');
+        selectField.id = 'math-question';
+        // Don't set a name attribute at all - this prevents Marketo from including it in the submission
+        selectField.style = "width: 100%;";
+
+        var defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        
+        // When labels are hidden, show the math question in the placeholder
+        // When labels are visible, just show "Select the answer"
+        if (labelsAreHidden) {
+            defaultOption.textContent = mathQuestion.question + ' Select the answer';
+        } else {
+            defaultOption.textContent = 'Select the answer';
+        }
+        selectField.appendChild(defaultOption);
+
+        for (var i = 0; i < mathQuestion.options.length; i++) {
+            var optionElement = document.createElement('option');
+            optionElement.value = mathQuestion.options[i];
+            optionElement.textContent = mathQuestion.options[i];
+            selectField.appendChild(optionElement);
+        }
+
+        // Create a simple label without Marketo classes
+        var label = document.createElement('label');
+        label.setAttribute('for', 'math-question');
+        label.innerHTML = '<span style="color: red; font-weight: bold;">*</span> <strong>' + mathQuestion.question + '</strong>';
+        
+        // Find an existing Marketo field to copy styles from
+        var existingField = formElement.querySelector('select.mktoField, input.mktoField');
+        var existingLabel = formElement.querySelector('label.mktoLabel');
+        
+        // Copy computed styles from existing Marketo elements and apply them
+        if (existingLabel) {
+            var labelStyles = window.getComputedStyle(existingLabel);
+            // Copy all important visual properties
+            label.style.fontFamily = labelStyles.fontFamily;
+            label.style.fontSize = labelStyles.fontSize;
+            label.style.fontWeight = labelStyles.fontWeight;
+            label.style.color = labelStyles.color;
+            label.style.lineHeight = labelStyles.lineHeight;
+            label.style.margin = labelStyles.margin;
+            label.style.marginTop = labelStyles.marginTop;
+            label.style.marginBottom = labelStyles.marginBottom;
+            label.style.padding = labelStyles.padding;
+            label.style.display = labelStyles.display;
+            label.style.width = labelStyles.width;
+        }
+        
+        // Copy computed styles to select field from existing Marketo fields
+        if (existingField) {
+            var fieldStyles = window.getComputedStyle(existingField);
+            selectField.style.fontFamily = fieldStyles.fontFamily;
+            selectField.style.fontSize = fieldStyles.fontSize;
+            selectField.style.fontWeight = fieldStyles.fontWeight;
+            selectField.style.color = fieldStyles.color;
+            selectField.style.lineHeight = fieldStyles.lineHeight;
+            selectField.style.height = fieldStyles.height;
+            selectField.style.border = fieldStyles.border;
+            selectField.style.borderColor = fieldStyles.borderColor;
+            selectField.style.borderWidth = fieldStyles.borderWidth;
+            selectField.style.borderStyle = fieldStyles.borderStyle;
+            selectField.style.borderRadius = fieldStyles.borderRadius;
+            selectField.style.padding = fieldStyles.padding;
+            selectField.style.paddingTop = fieldStyles.paddingTop;
+            selectField.style.paddingRight = fieldStyles.paddingRight;
+            selectField.style.paddingBottom = fieldStyles.paddingBottom;
+            selectField.style.paddingLeft = fieldStyles.paddingLeft;
+            selectField.style.margin = fieldStyles.margin;
+            selectField.style.marginTop = fieldStyles.marginTop;
+            selectField.style.marginBottom = fieldStyles.marginBottom;
+            selectField.style.backgroundColor = fieldStyles.backgroundColor;
+        }
+
+        // Detect if labels are positioned below fields by checking form structure
+        var testLabel = formElement.querySelector('label.mktoLabel');
+        var testInput = formElement.querySelector('input.mktoField, select.mktoField');
+        var labelsBelowFields = false;
+        
+        if (testLabel && testInput) {
+            // Check if the label comes after the input in DOM order
+            var labelIndex = Array.from(formElement.children).indexOf(testLabel);
+            var inputIndex = Array.from(formElement.children).indexOf(testInput);
+            labelsBelowFields = labelIndex > inputIndex;
+            debugLog("Label position check:", { labelsBelowFields: labelsBelowFields, labelIndex: labelIndex, inputIndex: inputIndex });
+        }
+        
+        var captchaDisclaimer = formElement.querySelector('.mktoCaptchaDisclaimer');
+        var submitButton = formElement.querySelector('button.mktoButton');
+
+        // Insert the math question field in the correct order based on form design
+        if (labelsBelowFields) {
+            // Labels below fields: insert field first, then label
+            if (captchaDisclaimer) {
+                formElement.insertBefore(selectField, captchaDisclaimer);
+                formElement.insertBefore(label, captchaDisclaimer);
+            } else if (submitButton) {
+                formElement.insertBefore(selectField, submitButton);
+                formElement.insertBefore(label, submitButton);
+            }
+        } else {
+            // Labels above fields: insert label first, then field
+            if (captchaDisclaimer) {
+                formElement.insertBefore(label, captchaDisclaimer);
+                formElement.insertBefore(selectField, captchaDisclaimer);
+            } else if (submitButton) {
+                formElement.insertBefore(label, submitButton);
+                formElement.insertBefore(selectField, submitButton);
+            }
+        }
+
+        form.correctAnswer = mathQuestion.correctAnswer;
+        window.marketoCorrectAnswer = mathQuestion.correctAnswer;
+        debugLog("Math question field added successfully, correct answer:", form.correctAnswer);
+    }
+
+    // Function to display error messages at the top of the form
+    function displayErrors(formElement, errors) {
+        var errorContainer = document.getElementById('form-error-container');
+        
+        if (!errorContainer) {
+            errorContainer = document.createElement('div');
+            errorContainer.id = 'form-error-container';
+            formElement.insertBefore(errorContainer, formElement.firstChild);
+        }
+
+        errorContainer.innerHTML = errors.join('<br>');
+    }
+
+    // Helper function to check if a form is in the hidden conversion container
+    // This function uses multiple detection methods for reliability:
+    // 1. Data attributes on the form element itself (most reliable)
+    // 2. Container ID check
+    // 3. Container class and data attribute check
+    function isHiddenConversionForm(form) {
+        try {
+            var formElem = form.getFormElem && form.getFormElem();
+            if (!formElem || !formElem.length) return false;
+            
+            var nativeForm = formElem[0];
+            if (!nativeForm) return false;
+            
+            // METHOD 1: Check data attributes on the form element itself (most reliable)
+            // The conversion script sets these attributes directly on the form
+            var formType = nativeForm.getAttribute('data-mkto-form-type');
+            var formPurpose = nativeForm.getAttribute('data-mkto-form-purpose');
+            if (formType === 'hidden-conversion' || formPurpose === 'hidden-conversion') {
+                debugLog("Skipping hidden conversion form (via form data attributes):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            // METHOD 2: Check if form is in the hidden conversion container by ID
+            var hiddenContainer = document.getElementById('mkto-hidden-form-conversion');
+            if (hiddenContainer && hiddenContainer.contains(nativeForm)) {
+                debugLog("Skipping hidden conversion form (via container ID):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            // METHOD 3: Check via closest() method if available
+            if (nativeForm.closest && nativeForm.closest('#mkto-hidden-form-conversion')) {
+                debugLog("Skipping hidden conversion form (via closest ID):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            // METHOD 4: Check for data attribute on container
+            var container = nativeForm.closest ? nativeForm.closest('.mkto-hidden-form-container') : null;
+            if (container && container.getAttribute('data-mkto-form-purpose') === 'hidden-conversion') {
+                debugLog("Skipping hidden conversion form (via container data attribute):", nativeForm.id || 'no-id');
+                return true;
+            }
+            
+            return false;
+        } catch (e) {
+            debugLog("Error checking if form is hidden:", e);
+            return false;
+        }
+    }
+
+    // Function to set up form validation
+    function setupFormValidation() {
+        safelyExecuteMkto(function(form) {
+            // CRITICAL: Skip hidden conversion forms - they should be handled by their own script
+            if (isHiddenConversionForm(form)) {
+                debugLog("Skipping validation setup for hidden conversion form");
+                return;
+            }
+            
+            // Check again at this point if the hardcoded script has already added a math question
+            var existingMathQuestion = document.getElementById('math-question');
+            if (existingMathQuestion && existingMathQuestion.name === 'mathQuestion') {
+                debugLog("Math question field already exists from hardcoded script - skipping execution");
+                return;
+            }
+            
+            debugLog("Setting up form validation");
+            addCustomStyles(); // Add custom styles
+            checkAndBlockIP(form); // Check IP blocking before other validations
+            addMathQuestionField(form);
+
+            // Set up form validation (like the old working script)
+            if (form && typeof form.onValidate === 'function') {
+                form.onValidate(function() {
+                    var errors = [];
+                    
+                    // Normalize names by converting to lowercase and removing spaces
+                    var firstName = (form.vals().FirstName || '').toLowerCase().replace(/\s+/g, '');
+                    var lastName = (form.vals().LastName || '').toLowerCase().replace(/\s+/g, '');
+                    var email = (form.vals().Email || '');
+
+                    // Check if name validation is enabled and the names are the same
+                    if (enableNameValidation && firstName === lastName) {
+                        errors.push('First Name and Last Name cannot be the same.');
+                    }
+
+                    // Check if preventDefaultNames validation is enabled
+                    if (preventDefaultNames) {
+                        if (firstName.includes("first")) {
+                            errors.push('The First Name cannot contain "first".');
+                        }
+                        if (lastName.includes("last")) {
+                            errors.push('The Last Name cannot contain "last".');
+                        }
+                    }
+
+                    // Validate .edu email domain if enabled
+                    if (enableEduValidation && email) {
+                        if (!validateEduEmail(email)) {
+                            errors.push('Email must be a .edu address.');
+                        }
+                    }
+
+                    // Validate the math question if enabled
+                    if (enableMathQuestion) {
+                        var mathQuestionElement = document.getElementById('math-question');
+                        if (mathQuestionElement) {
+                            var selectedAnswer = mathQuestionElement.value;
+                            var correctAnswer = form.correctAnswer || window.marketoCorrectAnswer;
+                            if (!selectedAnswer || !correctAnswer || selectedAnswer !== correctAnswer) {
+                                errors.push('Please answer the math question correctly.');
+                            }
+                        }
+                    }
+
+                    // Display errors if any, otherwise allow form submission (like the old script - no return)
+                    if (errors.length > 0) {
+                        displayErrors(form.getFormElem()[0], errors);
+                        form.submittable(false);
+                    } else {
+                        form.submittable(true);
+                    }
+                });
+            }
+
+            // Additional validation on submit (commented out to let Marketo handle submission)
+            // The onValidate handler above should be sufficient
+            /* if (form && typeof form.onSubmit === 'function') {
+                form.onSubmit(function() {
+                try {
+                    var errors = [];
+                    var formValues = form.vals();
+                    
+                    // Normalize names by converting to lowercase and removing spaces
+                    var firstName = (formValues.FirstName || '').toLowerCase().replace(/\s+/g, '');
+                    var lastName = (formValues.LastName || '').toLowerCase().replace(/\s+/g, '');
+                    var email = formValues.Email || '';
+
+                    // Check if name validation is enabled and the names are the same
+                    if (enableNameValidation && firstName === lastName) {
+                        errors.push('First Name and Last Name cannot be the same.');
+                    }
+
+                    // Check if preventDefaultNames validation is enabled
+                    if (preventDefaultNames) {
+                        if (firstName.includes("first")) {
+                            errors.push('The First Name cannot contain "first".');
+                        }
+                        if (lastName.includes("last")) {
+                            errors.push('The Last Name cannot contain "last".');
+                        }
+                    }
+
+                    // Validate .edu email domain if enabled
+                    if (enableEduValidation && email) {
+                        if (!validateEduEmail(email)) {
+                            errors.push('Email must be a .edu address.');
+                        }
+                    }
+
+                    // Validate the math question if enabled
+                    if (enableMathQuestion) {
+                        var mathQuestionElement = document.getElementById('math-question');
+                        if (mathQuestionElement) {
+                            var selectedAnswer = mathQuestionElement.value;
+                            var correctAnswer = form.correctAnswer || window.marketoCorrectAnswer;
+                            if (!selectedAnswer || !correctAnswer || selectedAnswer !== correctAnswer) {
+                                errors.push('Please answer the math question correctly.');
+                            }
+                        } else {
+                            debugLog("Math question element not found in onSubmit, skipping validation");
+                        }
+                    }
+
+                    // If there are errors, prevent submission and show them
+                    if (errors.length > 0) {
+                        displayErrors(form.getFormElem()[0], errors);
+                        return false; // Prevent form submission
+                    }
+
+                    return true; // Allow form submission
+                } catch (error) {
+                    debugLog("Error in onSubmit validation:", error);
+                    // If there's an error, let the form submit normally
+                    return true;
+                }
+                });
+            } else {
+                debugLog("Form object or onSubmit method not available");
+            } */
+
+            // CRITICAL: Only set up onSuccess for visible forms, not hidden conversion forms
+            // Hidden forms have their own onSuccess handlers that prevent navigation
+            if (form && typeof form.onSuccess === 'function' && !isHiddenConversionForm(form)) {
+                form.onSuccess(function(values, followUpUrl) {
+                    try {
+                        debugLog("Form submitted successfully", values);
+                        
+                        if (typeof dataLayer !== 'undefined') {
+                            dataLayer.push({ 'event': 'rfi_submission' });
+                            debugLog("RFI submission event pushed to dataLayer");
+                        }
+
+                        if (followUpUrl) {
+                            debugLog("Redirecting to follow-up URL:", followUpUrl);
+                            window.location.href = followUpUrl;
+                        }
+
+                        return false; // Prevent default Marketo redirect
+                    } catch (error) {
+                        debugLog("Error in onSuccess handler:", error);
+                        return false;
+                    }
+                });
+            } else if (isHiddenConversionForm(form)) {
+                debugLog("Skipping onSuccess setup for hidden conversion form - handled by its own script");
+            } else {
+                debugLog("Form object or onSuccess method not available");
+            }
+        });
+    }
+
+    // Initialize the form validation setup
+    debugLog("Initializing 3E Form Validation");
+    
+    if (window.MktoForms2) {
+        debugLog("MktoForms2 already available, setting up validation");
+        setupFormValidation();
+    } else {
+        debugLog("MktoForms2 not available, waiting for MktoForms2Loaded event");
+        window.addEventListener('MktoForms2Loaded', function() {
+            debugLog("MktoForms2Loaded event received, setting up validation");
+            setupFormValidation();
+        });
+    }
+})();
+</script>

@@ -126,7 +126,7 @@ cd automation
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json"
 ```
@@ -136,7 +136,7 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json" \
   --dry-run
@@ -147,7 +147,7 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json" \
   --containers "GTM-XXXXX,GTM-YYYYY"
@@ -158,7 +158,7 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json" \
   --no-publish
@@ -186,7 +186,7 @@ The `--verify` mode locates tags and displays information without making any cha
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--tag-name` | Yes* | Name of the tag to update (must match exactly). Not required for read-only modes. |
-| `--script-file` | Yes* | Path to the updated script file (relative to automation folder, e.g., "../tags/pop-up-solutions/3E_Pop-up"). Not required for read-only modes. |
+| `--script-file` | Yes* | Path to the updated script file (relative to automation folder, e.g., "../tags/pop-up-solutions/3E_Pop-up.html"). Tag files use .html extension. Not required for read-only modes. |
 | `--account-id` | Yes | GTM Account ID (numeric) |
 | `--credentials` | Yes | Path to service account JSON or OAuth credentials |
 | `--containers` | No | Comma-separated list of container IDs (e.g., "GTM-XXXXX,GTM-YYYYY" or "31734165,48665705"). If omitted, updates all containers. |

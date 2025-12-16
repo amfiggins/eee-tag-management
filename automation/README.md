@@ -19,7 +19,7 @@ The `gtm_tag_updater.py` script allows you to update tags across all GTM contain
    ```bash
    python gtm_tag_updater.py \
      --tag-name "3E_Pop-up" \
-     --script-file "../tags/ui/3E_Pop-up" \
+     --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
      --account-id "YOUR_ACCOUNT_ID" \
      --credentials "credentials.json" \
      --dry-run
@@ -60,7 +60,7 @@ The `gtm_tag_updater.py` script allows you to update tags across all GTM contain
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json"
 ```
@@ -70,7 +70,7 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json" \
   --containers "31734165,48665705"
@@ -81,7 +81,7 @@ python gtm_tag_updater.py \
 ```bash
 python gtm_tag_updater.py \
   --tag-name "3E_Pop-up" \
-  --script-file "../tags/pop-up-solutions/3E_Pop-up" \
+  --script-file "../tags/pop-up-solutions/3E_Pop-up.html" \
   --account-id "1234567" \
   --credentials "gtm-oauth-credentials.json" \
   --no-publish

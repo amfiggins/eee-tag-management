@@ -1,0 +1,568 @@
+<script>
+// Script Name: 3E_3EI Recruiter Unified
+// Author: Anthony Figgins
+// Description: Unified 3EI Recruiter iframe loader that supports dev, prod, or disabled modes via 3E config.
+// Version: 1.4.4
+// Date Updated: 2025-12-11
+
+(function (window, document) {
+  'use strict';
+
+  var CFG = {{3E config}};
+  var IFRAME_ID = 'chat-widget-iframe';
+  
+  // Environment configuration
+  var ENVIRONMENTS = {
+    disabled: { enabled: false },
+    dev: {
+      enabled: true,
+      baseUrl: 'http://alb-pmsquare-dev-1652163778.us-east-1.elb.amazonaws.com',
+      botId: CFG.chatBotDevId,
+      trustedOrigins: { 'http://alb-pmsquare-dev-1652163778.us-east-1.elb.amazonaws.com': true }
+    },
+    prod: {
+      enabled: true,
+      baseUrl: 'https://kb.3enrollment.com',
+      botId: CFG.chatBotProdId,
+      trustedOrigins: { 'https://kb.3enrollment.com': true }
+    }
+  };
+
+  // Get current environment from config
+  var currentEnv = String(CFG.chatBotEnvironment || 'disabled').toLowerCase();
+  var env = ENVIRONMENTS[currentEnv];
+
+  // Log script name and version on load (only in debug mode)
+  if (CFG.debugMode === 'true') {
+    console.log('[3E_ChatBot Unified] v1.4.4');
+  }
+
+  // Exit if disabled or invalid environment
+  if (!env || !env.enabled) {
+    if (CFG.debugMode === 'true') {
+      console.log('[3E ChatBot] Disabled or invalid environment:', currentEnv);
+    }
+    return;
+  }
+
+  // Validate required bot ID
+  if (!env.botId) {
+    console.error('[3E ChatBot] Missing bot ID for environment:', currentEnv);
+    return;
+  }
+
+  var IFRAME_SRC = env.baseUrl + '/bot/' + env.botId;
+  var TRUSTED_ORIGINS = env.trustedOrigins;
+  var DEBUG = CFG.debugMode === 'true';
+  var containerExpanded = false; // Track container expansion state
+  
+  // Ensure dataLayer exists
+  window.dataLayer = window.dataLayer || [];
+
+  function onReady(cb) {
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      try { cb(); } catch(e) { if (DEBUG) console.error('[3E ChatBot] onReady error:', e); }
+    } else if (document.addEventListener) {
+      document.addEventListener('DOMContentLoaded', function() {
+        try { cb(); } catch(e) { if (DEBUG) console.error('[3E ChatBot] DOMContentLoaded error:', e); }
+      });
+    } else {
+      var old = window.onload;
+      window.onload = function() {
+        if (old) old();
+        try { cb(); } catch(e) { if (DEBUG) console.error('[3E ChatBot] window.onload error:', e); }
+      };
+    }
+  }
+
+  function findChatbotContainer() {
+    try {
+      var container = document.getElementById('chatbot-iframe-container');
+      if (container) {
+        if (DEBUG) {
+          console.log('[3E ChatBot] Chatbot container found:', container);
+        }
+        return container;
+      }
+      if (DEBUG) {
+        console.log('[3E ChatBot] Chatbot container not found, using default fixed positioning');
+      }
+      return null;
+    } catch (e) {
+      if (DEBUG) console.error('[3E ChatBot] findChatbotContainer error:', e);
+      return null;
+    }
+  }
+
+  function createIframe() {
+    var el = document.getElementById(IFRAME_ID);
+    if (el) return el;
+
+    el = document.createElement('iframe');
+    el.id = IFRAME_ID;
+    el.src = IFRAME_SRC;
+    el.title = 'Chat Widget';
+    el.setAttribute('aria-label', 'Chat Widget');
+    el.setAttribute('frameborder', '0');
+    el.setAttribute('scrolling', 'no');
+
+    var container = findChatbotContainer();
+    var s = el.style;
+    
+    if (container) {
+      // Place iframe in container - sized to fit container (window-like behavior)
+      s.position = 'absolute';
+      s.top = '0';
+      s.left = '0';
+      s.width = '100%';
+      s.height = '100%';
+      s.border = 'none';
+      s.margin = '0';
+      s.padding = '0';
+      s.overflow = 'hidden';
+      s.visibility = 'visible';
+      s.opacity = '1';
+      el.setAttribute('aria-hidden', 'false');
+      
+      container.appendChild(el);
+      
+      if (DEBUG) {
+        console.log('[3E ChatBot] Iframe created in container for environment:', currentEnv, 'URL:', IFRAME_SRC, 'Container size:', container.style.width, 'x', container.style.height);
+      }
+    } else {
+      // Default behavior: fixed positioning on body
+    s.position = 'fixed';
+    s.bottom = '40px';
+    s.right = '40px';
+    s.border = 'none';
+    s.margin = '0';
+    s.padding = '0';
+    s.overflow = 'hidden';
+    s.zIndex = '2147483647';
+    s.width = '500px';
+    s.visibility = 'hidden';
+    s.opacity = '0';
+    s.transition = 'opacity 120ms ease';
+    el.setAttribute('aria-hidden', 'true');
+
+    document.body.appendChild(el);
+    
+    if (DEBUG) {
+        console.log('[3E ChatBot] Iframe created with fixed positioning for environment:', currentEnv, 'URL:', IFRAME_SRC);
+      }
+    }
+    
+    return el;
+  }
+
+
+  function applyMobileSize(iframe) {
+    var container = findChatbotContainer();
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    
+    if (DEBUG) {
+      console.log('[3E ChatBot] applyMobileSize - viewport width:', vw, 'px', 'container:', !!container);
+    }
+    
+    // Only apply mobile sizing if iframe is fixed (not in container)
+    if (!container) {
+    if (vw && vw < 500) {
+        if (DEBUG) {
+          console.log('[3E ChatBot] applyMobileSize - Mobile viewport detected (< 500px), applying mobile sizing');
+        }
+      iframe.style.width = Math.round(vw * 0.95) + 'px';
+      iframe.style.bottom = '10px';
+      iframe.style.right = '10px';
+    } else {
+        if (DEBUG) {
+          console.log('[3E ChatBot] applyMobileSize - Desktop viewport, using default positioning');
+        }
+      iframe.style.bottom = '40px';
+      iframe.style.right = '40px';
+      }
+    } else {
+      if (DEBUG) {
+        console.log('[3E ChatBot] applyMobileSize - Iframe in container, sizing handled by container');
+      }
+    }
+  }
+
+  function debounce(fn, wait) {
+    var t;
+    return function() {
+      var a = arguments, c = this;
+      clearTimeout(t);
+      t = setTimeout(function() { fn.apply(c, a); }, wait);
+    };
+  }
+
+  function isTrusted(event) {
+    return event && event.origin && TRUSTED_ORIGINS[event.origin] === true;
+  }
+
+  function sendMessageToIframe(iframe, message) {
+    try {
+      if (iframe && iframe.contentWindow) {
+        var targetOrigin = env.baseUrl;
+        iframe.contentWindow.postMessage(message, targetOrigin);
+        if (DEBUG) {
+          console.log('[3E ChatBot] Sent message to iframe:', message);
+        }
+      }
+    } catch (e) {
+      if (DEBUG) console.error('[3E ChatBot] Error sending message to iframe:', e);
+    }
+  }
+
+  function expandContainer(container, iframe) {
+    if (containerExpanded) {
+      if (DEBUG) {
+        console.log('[3E ChatBot] Container already expanded, skipping');
+      }
+      return;
+    }
+    
+    try {
+      containerExpanded = true;
+      var containerStyle = container.style;
+      
+      // Store original dimensions and border-radius
+      var originalWidth = containerStyle.width;
+      var originalHeight = containerStyle.height;
+      var originalBorderRadius = containerStyle.borderRadius;
+      container.setAttribute('data-original-width', originalWidth);
+      container.setAttribute('data-original-height', originalHeight);
+      container.setAttribute('data-original-border-radius', originalBorderRadius);
+      
+      // Full screen expansion - match working HTML exactly
+      containerStyle.transition = 'width 300ms, height 300ms, bottom 300ms, right 300ms, border-radius 300ms';
+      containerStyle.width = '100%';
+      containerStyle.height = '100%';
+      containerStyle.borderRadius = '4px'; // Change from circular (50%) to rounded (4px)
+      containerStyle.overflow = 'hidden';
+      containerStyle.position = 'fixed';
+      containerStyle.margin = '0px';
+      containerStyle.flexShrink = '0';
+      containerStyle.cursor = 'pointer';
+      containerStyle.bottom = '0px';
+      containerStyle.right = '0px';
+      containerStyle.zIndex = '2147483647';
+      containerStyle.marginLeft = '0'; // Ensure no left margin
+      
+      // Iframe should be absolute positioned with 100% to fill container
+      var iframeStyle = iframe.style;
+      iframeStyle.position = 'absolute';
+      iframeStyle.top = '0px';
+      iframeStyle.left = '0px';
+      iframeStyle.width = '100%';
+      iframeStyle.height = '100%';
+      
+      // Send message to iframe to expand
+      var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      sendMessageToIframe(iframe, {
+        type: 'set-container-size',
+        width: vw,
+        height: vh,
+        mode: 'expanded'
+      });
+      
+      // Force container and iframe sizes again after a short delay to override any resize messages
+      setTimeout(function() {
+        if (containerExpanded && container && iframe) {
+          container.style.width = '100%';
+          container.style.height = '100%';
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+          if (DEBUG) {
+            console.log('[3E ChatBot] Forced container/iframe sizes after expansion');
+          }
+        }
+      }, 100);
+      
+      if (DEBUG) {
+        console.log('[3E ChatBot] Container expanded to full screen (100% x 100%)');
+        console.log('[3E ChatBot] Container style after expansion:', {
+          width: containerStyle.width,
+          height: containerStyle.height,
+          position: containerStyle.position,
+          bottom: containerStyle.bottom,
+          right: containerStyle.right,
+          borderRadius: containerStyle.borderRadius,
+          zIndex: containerStyle.zIndex
+        });
+        console.log('[3E ChatBot] Iframe style after expansion:', {
+          position: iframeStyle.position,
+          top: iframeStyle.top,
+          left: iframeStyle.left,
+          width: iframeStyle.width,
+          height: iframeStyle.height
+        });
+      }
+    } catch (e) {
+      if (DEBUG) console.error('[3E ChatBot] Error expanding container:', e);
+      containerExpanded = false; // Reset on error
+    }
+  }
+
+  function collapseContainer(container, iframe) {
+    if (!containerExpanded) return;
+    
+    try {
+      containerExpanded = false;
+      var containerStyle = container.style;
+      
+      // Get original dimensions and border-radius
+      var originalWidth = container.getAttribute('data-original-width') || '50px';
+      var originalHeight = container.getAttribute('data-original-height') || '48px';
+      var originalBorderRadius = container.getAttribute('data-original-border-radius') || '50%';
+      
+      // Restore original size and border-radius
+      containerStyle.width = originalWidth;
+      containerStyle.height = originalHeight;
+      containerStyle.position = 'relative';
+      containerStyle.bottom = 'auto';
+      containerStyle.right = 'auto';
+      containerStyle.zIndex = 'auto';
+      containerStyle.borderRadius = originalBorderRadius; // Restore circular (50%)
+      
+      // Restore original margin (will be recalculated by sticky buttons script)
+      var stickyContainer = container.parentElement;
+      if (stickyContainer) {
+        var otherButtons = stickyContainer.querySelectorAll('button, a[href]');
+        var buttonSpacing = '12px';
+        if (otherButtons.length > 1) {
+          var rect1 = otherButtons[0].getBoundingClientRect();
+          var rect2 = otherButtons[1].getBoundingClientRect();
+          var spacing = Math.abs(rect2.left - rect1.right);
+          if (spacing > 0 && spacing < 50) {
+            buttonSpacing = spacing + 'px';
+          }
+        }
+        containerStyle.marginLeft = buttonSpacing;
+      }
+      
+      // Set iframe to specific size for proper button alignment (115px x 55px)
+      var iframeStyle = iframe.style;
+      iframeStyle.position = 'absolute';
+      iframeStyle.top = '0px';
+      iframeStyle.left = '0px';
+      iframeStyle.width = '115px';
+      iframeStyle.height = '55px';
+      
+      // Send message to iframe to collapse
+      sendMessageToIframe(iframe, {
+        type: 'set-container-size',
+        width: parseInt(originalWidth),
+        height: parseInt(originalHeight),
+        mode: 'compact'
+      });
+      
+      // Force iframe size again after a short delay to override any resize messages
+      setTimeout(function() {
+        if (!containerExpanded && iframe) {
+          iframe.style.width = '115px';
+          iframe.style.height = '55px';
+          if (DEBUG) {
+            console.log('[3E ChatBot] Forced iframe size after collapse:', iframe.style.width, 'x', iframe.style.height);
+          }
+        }
+      }, 100);
+      
+      if (DEBUG) {
+        console.log('[3E ChatBot] Container collapsed to:', originalWidth, 'x', originalHeight, 'border-radius:', originalBorderRadius);
+        console.log('[3E ChatBot] Iframe set to:', iframeStyle.width, 'x', iframeStyle.height);
+      }
+    } catch (e) {
+      if (DEBUG) console.error('[3E ChatBot] Error collapsing container:', e);
+    }
+  }
+
+  function setupDataLayerListeners(container, iframe) {
+    try {
+      // Listen for bot_initiated event to expand container
+      var originalPush = window.dataLayer.push;
+      window.dataLayer.push = function() {
+        var result = originalPush.apply(window.dataLayer, arguments);
+        
+        // Check if this push contains bot_initiated or bot_closed
+        for (var i = 0; i < arguments.length; i++) {
+          var item = arguments[i];
+          if (item && typeof item === 'object') {
+            // Handle bot_initiated - expand container
+            if (item.event === 'bot_initiated' && !containerExpanded) {
+              if (DEBUG) {
+                console.log('[3E ChatBot] bot_initiated event detected, expanding container');
+              }
+              expandContainer(container, iframe);
+            }
+            // Handle bot_closed - collapse container
+            else if (item.event === 'bot_closed' && containerExpanded) {
+              if (DEBUG) {
+                console.log('[3E ChatBot] bot_closed event detected, collapsing container');
+              }
+              collapseContainer(container, iframe);
+            }
+          }
+        }
+        
+        return result;
+      };
+      
+      if (DEBUG) {
+        console.log('[3E ChatBot] DataLayer listeners attached for bot_initiated and bot_closed');
+      }
+    } catch (e) {
+      if (DEBUG) console.error('[3E ChatBot] Error setting up dataLayer listeners:', e);
+    }
+  }
+
+  function reveal(iframe) {
+    if (iframe.getAttribute('data-shown') === '1') return;
+    
+    iframe.style.visibility = 'visible';
+    if (window.requestAnimationFrame) {
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          iframe.style.opacity = '1';
+        });
+      });
+    } else {
+      setTimeout(function() { iframe.style.opacity = '1'; }, 0);
+    }
+    
+    iframe.setAttribute('aria-hidden', 'false');
+    iframe.setAttribute('data-shown', '1');
+    
+    if (DEBUG) {
+      console.log('[3E ChatBot] Iframe revealed for environment:', currentEnv);
+    }
+  }
+
+  function handleMessage(event) {
+    if (!isTrusted(event)) return;
+
+    var data = event && event.data ? event.data : null;
+    var payload = data && data.payload ? data.payload : data;
+
+    if (DEBUG) {
+      var messageType = data && data.type ? data.type : (payload && payload.type ? payload.type : 'unknown');
+      console.log('[3E ChatBot] handleMessage - type:', messageType);
+    }
+
+    var container = findChatbotContainer();
+    var iframe = document.getElementById(IFRAME_ID);
+    
+    if (iframe) {
+      // Only reveal iframe if it's fixed (not in container)
+      if (!container && payload) {
+        reveal(iframe);
+      }
+
+      // Handle resize messages - but ignore them if iframe is in container
+      var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+      if (!container) {
+        // Fixed iframe: apply resize messages and mobile sizing
+      if (vw && vw < 500) {
+        applyMobileSize(iframe);
+      } else if (payload && payload.width) {
+        iframe.style.width = (typeof payload.width === 'number' ? (payload.width + 'px') : String(payload.width));
+      }
+      if (payload && payload.height) {
+        iframe.style.height = (typeof payload.height === 'number' ? (payload.height + 'px') : String(payload.height));
+      }
+      } else {
+        // Iframe in container: ignore resize messages and force our sizes
+        if (containerExpanded) {
+          // If expanded, force container to 100% x 100% and ignore resize messages
+          if (DEBUG) {
+            console.log('[3E ChatBot] Ignoring resize message - container forced to 100% x 100% when expanded');
+          }
+          container.style.width = '100%';
+          container.style.height = '100%';
+          // Force iframe to 100% of container
+          iframe.style.width = '100%';
+          iframe.style.height = '100%';
+        } else {
+          // If compact, ignore resize messages, force iframe to 115px x 55px
+          if (DEBUG) {
+            console.log('[3E ChatBot] Ignoring resize message - iframe forced to 115px x 55px when compact');
+          }
+          // Force iframe to specific size for button alignment
+          iframe.style.width = '115px';
+          iframe.style.height = '55px';
+        }
+      }
+      
+      // Note: bot_closed is now handled via dataLayer listener, not postMessage
+    }
+  }
+
+  onReady(function() {
+    try {
+      if (DEBUG) {
+        console.log('[3E ChatBot] onReady - Starting initialization for environment:', currentEnv);
+      }
+
+      var iframe = createIframe();
+      var container = findChatbotContainer();
+      
+      // Apply mobile sizing only if iframe is fixed (not in container)
+      if (!container) {
+      applyMobileSize(iframe);
+      }
+
+      iframe.addEventListener('load', function() {
+        if (!container) {
+        applyMobileSize(iframe);
+          // Reveal iframe if it's fixed (not in container)
+        reveal(iframe);
+        } else {
+          // Set iframe to specific size for proper button alignment in compact mode (115px x 55px)
+          var iframeStyle = iframe.style;
+          iframeStyle.position = 'absolute';
+          iframeStyle.top = '0px';
+          iframeStyle.left = '0px';
+          iframeStyle.width = '115px';
+          iframeStyle.height = '55px';
+          
+          // Get container dimensions
+          var containerWidth = parseInt(container.style.width) || 50;
+          var containerHeight = parseInt(container.style.height) || 48;
+          
+          // Send postMessage to iframe with container dimensions and compact mode
+          sendMessageToIframe(iframe, {
+            type: 'set-container-size',
+            width: containerWidth,
+            height: containerHeight,
+            mode: 'compact'
+          });
+          
+          // Setup dataLayer listeners for bot_initiated and bot_closed events
+          setupDataLayerListeners(container, iframe);
+          
+          if (DEBUG) {
+            console.log('[3E ChatBot] Iframe loaded in container, set to:', iframeStyle.width, 'x', iframeStyle.height, 'for button alignment');
+            console.log('[3E ChatBot] Container size:', container.style.width, 'x', container.style.height);
+            console.log('[3E ChatBot] Sent compact mode message to iframe');
+          }
+        }
+      });
+
+      window.addEventListener('message', handleMessage);
+      window.addEventListener('resize', debounce(function() {
+        var iframe = document.getElementById(IFRAME_ID);
+        if (iframe) {
+          applyMobileSize(iframe);
+        }
+      }, 150));
+
+      if (DEBUG) {
+        console.log('[3E ChatBot] Initialized for environment:', currentEnv, '- Container:', !!container, '- Iframe:', !!iframe);
+      }
+    } catch(e) {
+      if (DEBUG) console.error('[3E ChatBot] Initialization error:', e);
+    }
+  });
+})(window, document);
+</script>

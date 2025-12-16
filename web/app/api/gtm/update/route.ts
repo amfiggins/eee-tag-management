@@ -36,8 +36,11 @@ export async function POST(request: NextRequest) {
     // Use repo tag name if provided, otherwise map GTM tag name to repo tag name
     const fileTagName = repoTagName || getRepoTagName(tagName);
     
-    // Get script file path using the repo tag name
-    const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(fileTagName), fileTagName);
+    // Get script file path using the repo tag name (add .html extension if not present)
+    const fileTagNameWithExt = fileTagName.endsWith('.html') || fileTagName.endsWith('.js') 
+      ? fileTagName 
+      : `${fileTagName}.html`;
+    const scriptPath = join(process.cwd(), '..', 'tags', getTagCategory(fileTagName), fileTagNameWithExt);
     const pythonScript = join(process.cwd(), '..', 'automation', 'gtm_tag_updater.py');
     
     // Debug: Log the paths being used
