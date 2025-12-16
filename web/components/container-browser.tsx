@@ -66,6 +66,8 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
   const [loadingTags, setLoadingTags] = useState<Set<string>>(new Set()); // Set of container IDs loading tags
   const [loadingMetadata, setLoadingMetadata] = useState<Set<string>>(new Set()); // Set of container IDs loading metadata
   const [refreshingAll, setRefreshingAll] = useState(false); // Track if we're refreshing all containers
+  const [updatingAllOutOfDate, setUpdatingAllOutOfDate] = useState(false); // Track if we're updating all out-of-date tags
+  const [containersWithPermissionErrors, setContainersWithPermissionErrors] = useState<Set<string>>(new Set()); // Track containers with API permission errors
   const [error, setError] = useState('');
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState('');
@@ -770,16 +772,305 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
     }
   };
 
-  // Update multiple selected tags in a container
-  const updateSelectedTags = async (containerId: string) => {
-    const selected = selectedTags.get(containerId);
-    if (!selected || selected.size === 0) return;
+  // Helper functions for tag name mapping (same as API route)
+  const getRepoTagName = (gtmTagName: string): string => {
+    const tagNameMap: Record<string, string> = {
+      '3E_3EI Recruiter': '3E_3EI Recruiter Unified',
+    };
+    return tagNameMap[gtmTagName] || gtmTagName;
+  };
 
-    const tagsToUpdate = Array.from(selected);
+  const getTagCategory = (tagName: string): string => {
+    const repoTagName = getRepoTagName(tagName);
+    const categoryMap: Record<string, string> = {
+      'Template - 3E Config': 'base-solutions',
+      '3E_Analytics Tracking': 'base-solutions',
+      '3E_Page Activity': 'base-solutions',
+      '3E_Form Validation': 'base-solutions',
+      '3E_RFI Submit': 'base-solutions',
+      '3E_Favicon Injection': 'base-solutions',
+      '3E_Sticky Buttons': 'base-solutions',
+      '3E_Cloudflare Beacon': 'base-solutions',
+      '3E_3EI Recruiter Activity': 'chatbot-solutions',
+      '3E_3EI Recruiter Conversion': 'chatbot-solutions',
+      '3E_3EI Recruiter Tracking': 'chatbot-solutions',
+      '3E_3EI Recruiter': 'chatbot-solutions',
+      '3E_3EI Recruiter Unified': 'chatbot-solutions',
+      '3E_Insights Pixel': 'chatbot-solutions',
+      '3E_Pop-up': 'pop-up-solutions',
+      '3E_Pop-up Marketo Form': 'pop-up-solutions',
+      '3E_Pop-up Tracking': 'pop-up-solutions',
+    };
+    return categoryMap[repoTagName] || categoryMap[tagName] || 'base-solutions';
+  };
+
+  // Update multiple selected tags in a container using batch update
+  const updateSelectedTags = async (containerId: string, tagNamesOverride?: string[]) => {
+    // Use provided tag names if available, otherwise read from state
+    const tagsToUpdate = tagNamesOverride || Array.from(selectedTags.get(containerId) || []);
+    if (tagsToUpdate.length === 0) return;
     
-    // Update all selected tags sequentially (to avoid rate limiting issues)
-    for (const tagName of tagsToUpdate) {
-      await updateTag(containerId, tagName, true); // Update and publish each tag
+    // Use batch update if multiple tags, otherwise use single update
+    if (tagsToUpdate.length === 1) {
+      // Single tag: use existing updateTag function
+      await updateTag(containerId, tagsToUpdate[0], true);
+      return;
+    }
+    
+    // Batch update: collect all tag information
+    const tags = containerTags.get(containerId) || [];
+    const batchTags: Array<{tagName: string, repoTagName?: string, scriptPath: string}> = [];
+    
+    // Mark all tags as updating
+    setContainerTags(prev => {
+      const newMap = new Map(prev);
+      const containerTags = newMap.get(containerId) || [];
+      const updatedTags = containerTags.map(t => 
+        tagsToUpdate.includes(t.tagName) ? { ...t, updating: true } : t
+      );
+      newMap.set(containerId, updatedTags);
+      return newMap;
+    });
+    
+    try {
+      // Build script paths for all tags
+      for (const tagName of tagsToUpdate) {
+        const tag = tags.find(t => t.tagName === tagName);
+        const repoTagName = tag?.repoTagName || getRepoTagName(tagName);
+        const category = getTagCategory(repoTagName);
+        
+        // Build script path (same logic as update route)
+        const fileTagNameWithExt = repoTagName.endsWith('.html') || repoTagName.endsWith('.js') 
+          ? repoTagName 
+          : `${repoTagName}.html`;
+        
+        // Construct path for server-side (API route will handle path resolution)
+        // The API route expects paths relative to the project root
+        const scriptPath = `../tags/${category}/${fileTagNameWithExt}`;
+        
+        batchTags.push({
+          tagName: tagName,
+          repoTagName: repoTagName,
+          scriptPath: scriptPath
+        });
+      }
+      
+      const response = await fetch('/api/gtm/update-batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          containerId,
+          tags: batchTags,
+          accountId,
+          credentialsPath,
+          publish: true,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Extract detailed error message (similar to updateTag)
+        let errorMsg = data.error || 'Failed to update tags';
+        if (data.details) {
+          const details = String(data.details);
+          const errorBlockMatch = details.match(/ERROR:.*?(?=\n\n\[|$)/s);
+          if (errorBlockMatch) {
+            const fullErrorBlock = errorBlockMatch[0];
+            const errorLines = fullErrorBlock.split('\n').filter((line: string) => 
+              line.trim() && 
+              !line.includes('FutureWarning') &&
+              !line.includes('warnings.warn') &&
+              !line.includes('[DEBUG]')
+            );
+            if (errorLines.length > 0) {
+              errorMsg = errorLines.join('\n');
+            }
+          } else {
+            const errorLines = details.split('\n').filter((line: string) => 
+              line.trim() && 
+              !line.includes('FutureWarning') &&
+              !line.includes('warnings.warn') &&
+              !line.includes('[DEBUG]') &&
+              (line.includes('Error') || line.includes('ERROR') || line.includes('Traceback') || 
+               line.includes('Exception') || line.includes('Failed') || line.includes('❌') ||
+               line.includes('⚠️') || line.includes('REQUIRED FIX') || line.includes('Also verify'))
+            );
+            if (errorLines.length > 0) {
+              errorMsg = errorLines.join('\n');
+            } else {
+              errorMsg = `${errorMsg}\n\nDetails: ${details.substring(0, 1000)}`;
+            }
+          }
+        }
+        throw new Error(errorMsg);
+      }
+
+      // Small delay to ensure GTM has processed the update
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Reload tags and metadata to get updated versions (bypass cache)
+      await loadContainerMetadata(containerId, true);
+      await loadTagsForContainer(containerId, true);
+      
+      // Clear updating flags on success
+      setContainerTags(prev => {
+        const newMap = new Map(prev);
+        const tags = newMap.get(containerId) || [];
+        const updatedTags = tags.map(tag => 
+          tagsToUpdate.includes(tag.tagName) ? { ...tag, updating: false } : tag
+        );
+        newMap.set(containerId, updatedTags);
+        return newMap;
+      });
+      
+      // Clear selected tags after successful batch update
+      setSelectedTags(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(containerId);
+        return newMap;
+      });
+    } catch (err: any) {
+      setError(`Failed to batch update tags in ${containerId}:\n${err.message}`);
+      console.error('Error batch updating tags:', err);
+      
+      // Remove updating flags on error
+      setContainerTags(prev => {
+        const newMap = new Map(prev);
+        const tags = newMap.get(containerId) || [];
+        const updatedTags = tags.map(tag => 
+          tagsToUpdate.includes(tag.tagName) ? { ...tag, updating: false } : tag
+        );
+        newMap.set(containerId, updatedTags);
+        return newMap;
+      });
+    }
+  };
+
+  // Update all out-of-date tags across all containers
+  const updateAllOutOfDateTags = async () => {
+    setUpdatingAllOutOfDate(true);
+    setError('');
+    setContainersWithPermissionErrors(new Set()); // Clear permission errors state
+    
+    try {
+      const totalContainers = containerList.length;
+      let containersProcessed = 0;
+      let containersWithUpdates = 0;
+      let successCount = 0;
+      let failedCount = 0;
+      const failedContainers: string[] = [];
+      const permissionErrorContainers: string[] = [];
+      
+      // Process all containers sequentially
+      for (let i = 0; i < containerList.length; i++) {
+        const container = containerList[i];
+        const containerId = container.containerId;
+        const containerName = container.containerName || containerId;
+        
+        // Show progress: checking container
+        setError(`Checking container ${containerName}... (${i + 1}/${totalContainers})`);
+        
+        try {
+          // Load tags for this container (force reload to get fresh data)
+          await loadTagsForContainer(containerId, true);
+          
+          // Wait for React to update state - loadTagsForContainer updates state asynchronously
+          // Give React time to process the state update (React batches updates)
+          // We need to wait for the next render cycle to see updated tags
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Get the loaded tags from containerTags state
+          // Note: This reads from closure, but after the delay React should have updated
+          // If tags aren't available yet, the container might not have any tags or had an error
+          const tags = containerTags.get(containerId) || [];
+          
+          // Filter for out-of-date tags
+          const outOfDateTags = tags.filter(t => t.needsUpdate);
+          
+          if (outOfDateTags.length > 0) {
+            containersWithUpdates++;
+            const tagNames = outOfDateTags.map(t => t.tagName);
+            
+            // Show progress: updating container
+            setError(`Updating container ${containerName} - ${outOfDateTags.length} tag${outOfDateTags.length > 1 ? 's' : ''}... (${i + 1}/${totalContainers})`);
+            
+            try {
+              // Use existing updateSelectedTags function which handles batch/single updates
+              // Pass tag names directly to avoid state timing issues
+              await updateSelectedTags(containerId, tagNames);
+              successCount += outOfDateTags.length;
+            } catch (err: any) {
+              failedCount += outOfDateTags.length;
+              failedContainers.push(containerName);
+              console.error(`Error updating tags in container ${containerId}:`, err);
+              // Continue with next container even if this one failed
+            }
+          } else {
+            // No out-of-date tags, skip to next container
+            // (could show "No updates needed" but that might be too verbose)
+          }
+          
+          containersProcessed++;
+          
+          // Small delay between containers to avoid overwhelming the API
+          if (i < containerList.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        } catch (err: any) {
+          // Check if this is a permission error
+          const errorMessage = err.message || err.toString() || '';
+          const isPermissionError = 
+            errorMessage.includes('No API permissions') ||
+            errorMessage.includes('403') ||
+            errorMessage.includes('404') ||
+            errorMessage.includes('permission denied') ||
+            errorMessage.includes('Not found') ||
+            errorMessage.includes('Permission denied') ||
+            errorMessage.toLowerCase().includes('access denied');
+          
+          if (isPermissionError) {
+            // Flag container with permission error
+            setContainersWithPermissionErrors(prev => new Set(prev).add(containerId));
+            permissionErrorContainers.push(containerName);
+            console.error(`Permission error for container ${containerId}:`, err);
+          } else {
+            // Other errors (not permission-related)
+            console.error(`Error processing container ${containerId}:`, err);
+          }
+          // Continue with next container even if this one failed
+          containersProcessed++;
+        }
+      }
+      
+      // Show summary
+      let summaryMessage = '';
+      if (containersWithUpdates === 0) {
+        summaryMessage = `✓ Processed ${containersProcessed} container${containersProcessed !== 1 ? 's' : ''}. No out-of-date tags found.`;
+      } else if (failedCount === 0) {
+        summaryMessage = `✓ Processed ${containersProcessed} container${containersProcessed !== 1 ? 's' : ''}, updated ${successCount} tag${successCount !== 1 ? 's' : ''} in ${containersWithUpdates} container${containersWithUpdates !== 1 ? 's' : ''}`;
+      } else {
+        summaryMessage = `Processed ${containersProcessed} container${containersProcessed !== 1 ? 's' : ''}, updated ${successCount} tag${successCount !== 1 ? 's' : ''} in ${containersWithUpdates} container${containersWithUpdates !== 1 ? 's' : ''}. ` +
+          `Failed: ${failedCount} tag${failedCount !== 1 ? 's' : ''} in container${failedContainers.length !== 1 ? 's' : ''} ${failedContainers.join(', ')}`;
+      }
+      
+      // Add permission errors to summary if any
+      if (permissionErrorContainers.length > 0) {
+        summaryMessage += `. Permission errors: ${permissionErrorContainers.length} container${permissionErrorContainers.length !== 1 ? 's' : ''} (${permissionErrorContainers.join(', ')})`;
+      }
+      
+      setError(summaryMessage);
+      
+      // Refresh all containers to get updated tag versions
+      await refreshAllContainers();
+      
+    } catch (err: any) {
+      setError(`Error updating all out-of-date tags: ${err.message}`);
+      console.error('Error updating all out-of-date tags:', err);
+    } finally {
+      setUpdatingAllOutOfDate(false);
     }
   };
 
@@ -810,25 +1101,45 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
         <h2 className="text-2xl font-semibold text-gray-900">Container Search</h2>
         <div className="flex items-center gap-2">
           {containerList.length > 0 && (
-            <Button
-              onClick={refreshAllContainers}
-              disabled={refreshingAll || loadingContainers}
-              variant="outline"
-              className="text-gray-700"
-              title="Refresh metadata and tags for all containers"
-            >
-              {refreshingAll ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Refreshing All...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh All Containers
-                </>
-              )}
-            </Button>
+            <>
+              <Button
+                onClick={refreshAllContainers}
+                disabled={refreshingAll || loadingContainers || updatingAllOutOfDate}
+                variant="outline"
+                className="text-gray-700"
+                title="Refresh metadata and tags for all containers"
+              >
+                {refreshingAll ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Refreshing All...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh All Containers
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={updateAllOutOfDateTags}
+                disabled={updatingAllOutOfDate || loadingContainers || refreshingAll || containerList.length === 0}
+                className="bg-gradient-to-r from-[#FFD700] to-[#FFC700] hover:from-[#FFC700] hover:to-[#FFB700] text-gray-900 font-bold"
+                title="Update all out-of-date tags across all containers"
+              >
+                {updatingAllOutOfDate ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Updating All...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Update All Out-of-Date Tags
+                  </>
+                )}
+              </Button>
+            </>
           )}
           <Button
             onClick={searchContainers}
@@ -922,9 +1233,13 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
               const isLoadingTags = loadingTags.has(container.containerId);
               const tags = containerTags.get(container.containerId) || [];
               const updatableTagsCount = tags.filter(t => t.needsUpdate).length;
+              const hasPermissionError = containersWithPermissionErrors.has(container.containerId);
               
               return (
-                <div key={container.containerId} className="border-b border-gray-200 last:border-b-0">
+                <div 
+                  key={container.containerId} 
+                  className={`border-b border-gray-200 last:border-b-0 ${hasPermissionError ? 'bg-red-50 border-red-200' : ''}`}
+                >
                   <div className="flex items-center gap-2 p-4">
                     <button
                       type="button"
@@ -939,20 +1254,36 @@ export default function ContainerBrowser({ accountId, credentialsPath }: Contain
                         )}
                         {/* Container Name with Account Name - Main, Bold */}
                         {container.containerName ? (
-                          <div className="font-semibold text-base text-gray-900 truncate" title={container.containerName}>
-                            {container.containerName}
+                          <div className="font-semibold text-base text-gray-900 truncate flex items-center gap-2" title={container.containerName}>
+                            {hasPermissionError && (
+                              <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" title="No API Access" />
+                            )}
+                            <span>{container.containerName}</span>
                             {container.accountName && (
                               <span className="text-gray-500 font-normal ml-2">
                                 ({container.accountName})
                               </span>
                             )}
+                            {hasPermissionError && (
+                              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">
+                                No API Access
+                              </span>
+                            )}
                           </div>
                         ) : (
-                          <div className="font-semibold text-base text-gray-900">
-                            {container.containerId}
+                          <div className="font-semibold text-base text-gray-900 flex items-center gap-2">
+                            {hasPermissionError && (
+                              <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" title="No API Access" />
+                            )}
+                            <span>{container.containerId}</span>
                             {container.accountName && (
                               <span className="text-gray-500 font-normal ml-2">
                                 ({container.accountName})
+                              </span>
+                            )}
+                            {hasPermissionError && (
+                              <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-100 text-red-800 rounded">
+                                No API Access
                               </span>
                             )}
                           </div>

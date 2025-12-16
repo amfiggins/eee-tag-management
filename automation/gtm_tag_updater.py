@@ -1469,6 +1469,181 @@ class GTMTagUpdater:
                 print(f"  🧹 Cleaning up workspace {workspace_id}...")
                 self.delete_workspace(container_id, workspace_id, account_id=target_account_id)
 
+    def update_tags_batch_in_container(
+        self, 
+        container_id: str, 
+        tag_updates: List[Dict[str, str]], 
+        publish: bool = True, 
+        dry_run: bool = False, 
+        account_id: Optional[str] = None
+    ) -> bool:
+        """
+        Update multiple tags in a container in a single workspace operation.
+        
+        Args:
+            container_id: GTM container ID
+            tag_updates: List of dicts with keys: 'tag_name' (container tag name), 
+                        'new_content' (script content), 'repo_tag_name' (optional, for logging)
+            publish: Whether to publish the changes (default: True)
+            dry_run: If True, only show what would be updated without making changes
+            account_id: GTM account ID (optional, will be detected if not provided)
+        
+        Returns:
+            True if all updates succeeded, False otherwise
+        """
+        target_account_id = account_id or self.account_id
+        workspace_id = None
+        
+        try:
+            if not tag_updates or len(tag_updates) == 0:
+                print(f"  ⚠️  No tags to update")
+                return False
+            
+            tag_count = len(tag_updates)
+            print(f"  📦 Batch updating {tag_count} tag(s) in {container_id}...")
+            
+            # Get default workspace to find all tags (read-only)
+            default_workspace_id = self.get_workspace(container_id, account_id=target_account_id)
+            if not default_workspace_id:
+                print(f"  ❌ Could not get default workspace for {container_id}")
+                print(f"  ⚠️  Cannot proceed with batch update without workspace access")
+                return False
+            
+            # Verify all tags exist in the container
+            tags_found = []
+            for tag_update in tag_updates:
+                tag_name = tag_update.get('tag_name')
+                repo_tag_name = tag_update.get('repo_tag_name', tag_name)
+                
+                if not tag_name:
+                    print(f"  ❌ Missing 'tag_name' in tag update")
+                    return False
+                
+                tag = self.find_tag(container_id, default_workspace_id, tag_name, account_id=target_account_id)
+                if not tag:
+                    print(f"  ⚠️  Tag '{tag_name}' not found in {container_id}")
+                    return False
+                
+                tags_found.append({
+                    'tag_name': tag_name,
+                    'repo_tag_name': repo_tag_name,
+                    'tag_id': tag['tagId'],
+                    'tag': tag
+                })
+                print(f"  ✓ Found tag: {tag_name} (ID: {tag['tagId']})")
+            
+            if dry_run:
+                print(f"  [DRY RUN] Would create new workspace and update {tag_count} tag(s)")
+                return True
+            
+            # Create ONE new workspace for all updates
+            from datetime import datetime
+            workspace_name = f"Batch Tag Update - {tag_count} tags - {datetime.now().strftime('%Y-%m-%d %H-%M-%S')}"
+            workspace_id = self.create_workspace(container_id, workspace_name, account_id=target_account_id)
+            if not workspace_id:
+                print(f"  ❌ Failed to create workspace for {container_id}")
+                return False
+            
+            print(f"  ✓ Created workspace: {workspace_id}")
+            
+            # Update ALL tags in the workspace sequentially
+            all_succeeded = True
+            for tag_info in tags_found:
+                tag_name = tag_info['tag_name']
+                repo_tag_name = tag_info['repo_tag_name']
+                tag_id = tag_info['tag_id']
+                
+                # Find the corresponding tag update with content
+                tag_update = next(
+                    (tu for tu in tag_updates if tu.get('tag_name') == tag_name),
+                    None
+                )
+                if not tag_update:
+                    print(f"  ❌ Could not find content for tag '{tag_name}'")
+                    all_succeeded = False
+                    continue
+                
+                new_content = tag_update.get('new_content')
+                if not new_content:
+                    print(f"  ❌ Missing 'new_content' for tag '{tag_name}'")
+                    all_succeeded = False
+                    continue
+                
+                # Find the tag in the new workspace
+                tag_in_workspace = self.find_tag(container_id, workspace_id, tag_name, account_id=target_account_id)
+                if not tag_in_workspace:
+                    print(f"  ⚠️  Tag '{tag_name}' not found in new workspace")
+                    all_succeeded = False
+                    continue
+                
+                print(f"  🔄 Updating tag: {tag_name} ({repo_tag_name})...")
+                
+                # Update tag in the new workspace
+                if not self.update_tag(container_id, workspace_id, tag_in_workspace, new_content, account_id=target_account_id):
+                    print(f"  ❌ Failed to update tag '{tag_name}'")
+                    all_succeeded = False
+                    continue
+                
+                print(f"  ✓ Tag '{tag_name}' updated successfully")
+            
+            if not all_succeeded:
+                print(f"  ❌ Some tags failed to update")
+                return False
+            
+            print(f"  ✓ All {tag_count} tag(s) updated successfully in workspace")
+            
+            if publish:
+                # Create ONE version from the workspace
+                tag_names_str = ", ".join([ti['tag_name'] for ti in tags_found])
+                version_id = self.create_version(
+                    container_id, 
+                    workspace_id, 
+                    account_id=target_account_id, 
+                    tag_name=f"Batch: {tag_names_str}"
+                )
+                
+                if not version_id:
+                    print(f"  ❌ Failed to create version")
+                    return False
+                
+                print(f"  ✓ Created version: {version_id}")
+                
+                # Publish the version once
+                if not self.publish_version(container_id, version_id, account_id=target_account_id):
+                    print(f"  ❌ Failed to publish version")
+                    return False
+                
+                print(f"  ✓ Version published successfully (workspace automatically removed)")
+                # Workspace is automatically deleted by GTM after publishing
+                workspace_id = None
+                
+                # Sync the default workspace with the latest published version
+                default_workspace_id = self.get_workspace(container_id, account_id=target_account_id)
+                if default_workspace_id:
+                    print(f"  🔄 Syncing default workspace {default_workspace_id} with published version...")
+                    self.sync_workspace(container_id, default_workspace_id, account_id=target_account_id)
+                else:
+                    print(f"  ⚠️  Could not get default workspace to sync (this is non-fatal)")
+            else:
+                # If not publishing, we need to manually delete the workspace
+                if workspace_id:
+                    self.delete_workspace(container_id, workspace_id, account_id=target_account_id)
+                    workspace_id = None
+            
+            return True
+            
+        except Exception as e:
+            print(f"  ❌ Unexpected error during batch update: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+            
+        finally:
+            # Always clean up workspace if it still exists (e.g., if publish failed or error occurred)
+            if workspace_id:
+                print(f"  🧹 Cleaning up workspace {workspace_id}...")
+                self.delete_workspace(container_id, workspace_id, account_id=target_account_id)
+
 
 def read_script_file(file_path: str) -> str:
     """Read script content from file."""
@@ -1610,6 +1785,11 @@ Examples:
         help='Publish the specified container version ID for the specified container(s) and exit'
     )
     
+    parser.add_argument(
+        '--batch-update',
+        help='Batch update mode: JSON file path or JSON string with format {"tags": [{"tag_name": "...", "script_file": "...", "repo_tag_name": "..."}]}'
+    )
+    
     args = parser.parse_args()
     
     # Determine --all-accounts mode: discovery vs update
@@ -1636,6 +1816,40 @@ Examples:
         is_all_accounts_discovery  # Only discovery mode is read-only
     )
     
+    # Handle batch update mode
+    batch_update_data = None
+    if args.batch_update:
+        try:
+            # Try to parse as JSON string first
+            try:
+                batch_update_data = json.loads(args.batch_update)
+            except json.JSONDecodeError:
+                # If not valid JSON string, try as file path
+                batch_file = Path(args.batch_update)
+                if not batch_file.is_absolute():
+                    batch_file = Path(__file__).parent / batch_file
+                with open(batch_file, 'r', encoding='utf-8') as f:
+                    batch_update_data = json.load(f)
+            
+            if not isinstance(batch_update_data, dict) or 'tags' not in batch_update_data:
+                print("ERROR: --batch-update JSON must have 'tags' array")
+                sys.exit(1)
+            
+            if not isinstance(batch_update_data['tags'], list) or len(batch_update_data['tags']) == 0:
+                print("ERROR: --batch-update 'tags' must be a non-empty array")
+                sys.exit(1)
+            
+            print(f"✓ Loaded batch update data: {len(batch_update_data['tags'])} tag(s)")
+        except FileNotFoundError as e:
+            print(f"ERROR: Batch update file not found: {e}")
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Invalid JSON in --batch-update: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"ERROR: Failed to load batch update data: {e}")
+            sys.exit(1)
+    
     # Validate arguments
     if args.containers_only:
         # Containers-only mode doesn't need tag-name or script-file
@@ -1655,37 +1869,71 @@ Examples:
         if len(container_list) > 1:
             print("ERROR: --publish-version currently only supports a single container ID")
             sys.exit(1)
-    # For update mode (NOT read-only), require both tag-name and script-file
+    # For update mode (NOT read-only), require both tag-name and script-file (unless batch update)
     # This includes multi-account update mode (is_all_accounts_update)
-    if not is_read_only_mode:
+    if not is_read_only_mode and not args.batch_update:
         if not args.tag_name:
-            print("ERROR: --tag-name is required for update mode")
+            print("ERROR: --tag-name is required for update mode (or use --batch-update)")
             sys.exit(1)
         if not args.script_file:
-            print("ERROR: --script-file is required for update mode")
+            print("ERROR: --script-file is required for update mode (or use --batch-update)")
             sys.exit(1)
     
     # If in read-only mode, script file is optional
     script_content = None
+    batch_tag_updates = None
+    
     if not is_read_only_mode:
-        # Read script content - handle relative paths from Tag Manager folder
-        if not args.script_file:
-            print("ERROR: --script-file is required for update mode")
-            sys.exit(1)
-        
-        script_file = args.script_file
-        if not Path(script_file).is_absolute():
-            # If relative, assume it's relative to the Tag Manager folder
-            script_dir = Path(__file__).parent
-            script_file = script_dir / script_file
-        
-        try:
-            script_content = read_script_file(str(script_file))
-            print(f"✓ Loaded script from: {script_file}")
-            print(f"  Content length: {len(script_content)} characters")
-        except FileNotFoundError as e:
-            print(f"ERROR: {e}")
-            sys.exit(1)
+        if args.batch_update:
+            # Batch update mode: read all script files
+            batch_tag_updates = []
+            for tag_info in batch_update_data['tags']:
+                tag_name = tag_info.get('tag_name')
+                script_file = tag_info.get('script_file')
+                repo_tag_name = tag_info.get('repo_tag_name', tag_name)
+                
+                if not tag_name:
+                    print("ERROR: Each tag in batch update must have 'tag_name'")
+                    sys.exit(1)
+                if not script_file:
+                    print(f"ERROR: Tag '{tag_name}' missing 'script_file'")
+                    sys.exit(1)
+                
+                # Handle relative paths
+                if not Path(script_file).is_absolute():
+                    script_dir = Path(__file__).parent
+                    script_file = (script_dir / script_file).resolve()
+                
+                try:
+                    new_content = read_script_file(str(script_file))
+                    batch_tag_updates.append({
+                        'tag_name': tag_name,
+                        'new_content': new_content,
+                        'repo_tag_name': repo_tag_name
+                    })
+                    print(f"✓ Loaded script for '{tag_name}': {script_file} ({len(new_content)} chars)")
+                except FileNotFoundError as e:
+                    print(f"ERROR: Script file not found for tag '{tag_name}': {e}")
+                    sys.exit(1)
+        else:
+            # Single tag update mode: read script content - handle relative paths from Tag Manager folder
+            if not args.script_file:
+                print("ERROR: --script-file is required for update mode")
+                sys.exit(1)
+            
+            script_file = args.script_file
+            if not Path(script_file).is_absolute():
+                # If relative, assume it's relative to the Tag Manager folder
+                script_dir = Path(__file__).parent
+                script_file = (script_dir / script_file).resolve()
+            
+            try:
+                script_content = read_script_file(str(script_file))
+                print(f"✓ Loaded script from: {script_file}")
+                print(f"  Content length: {len(script_content)} characters")
+            except FileNotFoundError as e:
+                print(f"ERROR: {e}")
+                sys.exit(1)
     
     # Initialize updater
     print(f"[DEBUG] Initializing GTMTagUpdater with credentials: {args.credentials}, account: {args.account_id}", flush=True)
@@ -1953,7 +2201,10 @@ Examples:
             sys.exit(1)
     else:
         # Update tags
-        print(f"\n{'[DRY RUN] ' if args.dry_run else ''}Updating tag '{args.tag_name}' in {len(container_ids)} container(s)...")
+        if args.batch_update:
+            print(f"\n{'[DRY RUN] ' if args.dry_run else ''}Batch updating {len(batch_tag_updates)} tag(s) in {len(container_ids)} container(s)...")
+        else:
+            print(f"\n{'[DRY RUN] ' if args.dry_run else ''}Updating tag '{args.tag_name}' in {len(container_ids)} container(s)...")
         
         success_count = 0
         failed_count = 0
@@ -1967,14 +2218,25 @@ Examples:
                 if container_obj:
                     container_account_id = container_obj.get('accountId')
             
-            result = updater.update_tag_in_container(
-                container_id,
-                args.tag_name,
-                script_content,
-                publish=not args.no_publish,
-                dry_run=args.dry_run,
-                account_id=container_account_id
-            )
+            if args.batch_update:
+                # Batch update mode
+                result = updater.update_tags_batch_in_container(
+                    container_id,
+                    batch_tag_updates,
+                    publish=not args.no_publish,
+                    dry_run=args.dry_run,
+                    account_id=container_account_id
+                )
+            else:
+                # Single tag update mode
+                result = updater.update_tag_in_container(
+                    container_id,
+                    args.tag_name,
+                    script_content,
+                    publish=not args.no_publish,
+                    dry_run=args.dry_run,
+                    account_id=container_account_id
+                )
             
             if result:
                 success_count += 1
