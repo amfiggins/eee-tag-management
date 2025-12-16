@@ -114,11 +114,11 @@ export async function POST(request: NextRequest) {
             await readFile(tagFilePath, 'utf-8');
             foundFileName = normalizedTagName;
           } catch {
-            // Try with .html extension (repo tag name) - fallback for legacy
+            // Try with .js extension (repo tag name) - legacy support
             try {
-              tagFilePath = join(tagsDir, category, `${normalizedRepoTagName}.html`);
+              tagFilePath = join(tagsDir, category, `${normalizedRepoTagName}.js`);
               await readFile(tagFilePath, 'utf-8');
-              foundFileName = `${normalizedRepoTagName}.html`;
+              foundFileName = `${normalizedRepoTagName}.js`;
             } catch {
               // Try with .js extension (original tag name) - legacy support
               try {
