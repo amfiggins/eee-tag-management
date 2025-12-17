@@ -74,7 +74,7 @@
       }
       
       // Get the actual DOM element (jQuery object, get first element)
-      var formElement = formElem[0] || formElem.get ? formElem.get(0) : null;
+      var formElement = formElem[0] || (formElem.get ? formElem.get(0) : null);
       if (!formElement) {
         return false;
       }
