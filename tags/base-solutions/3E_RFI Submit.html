@@ -2,8 +2,8 @@
 // Script Name: 3E_RFI Submit
 // Author: Anthony Figgins
 // Description: Handles Marketo RFI form submission and 123FormBuilder form submission, pushes event to dataLayer, and manages redirect.
-// Version: 1.4.4
-// Date Updated: 2025-12-15
+// Version: 1.4.5
+// Date Updated: 2025-12-17
 // Dependencies: 3E Config, Marketo Forms2
 
   (function() {
@@ -53,7 +53,7 @@
 
   // Log script name and version on load (only in debug mode)
   if (DEBUG) {
-    console.log('[3E_RFI Submit] v1.4.4');
+    console.log('[3E_RFI Submit] v1.4.5');
   }
 
   // Function to push rfi_submission event (shared by both form types)
@@ -61,6 +61,66 @@
     window.dataLayer.push({'event': 'rfi_submission'});
     if (DEBUG) {
       console.log('[3E_RFI Submit] Pushed rfi_submission event to dataLayer');
+    }
+  }
+
+  // Function to check if a Marketo form is a hidden conversion form
+  function isHiddenConversionForm(form) {
+    try {
+      // Get the form element using Marketo Forms2 API
+      var formElem = form.getFormElem();
+      if (!formElem || !formElem.length) {
+        return false;
+      }
+      
+      // Get the actual DOM element (jQuery object, get first element)
+      var formElement = formElem[0] || formElem.get ? formElem.get(0) : null;
+      if (!formElement) {
+        return false;
+      }
+      
+      // Check for data attributes indicating hidden conversion form
+      var formPurpose = formElement.getAttribute('data-mkto-form-purpose');
+      var formType = formElement.getAttribute('data-mkto-form-type');
+      
+      if (formPurpose === 'hidden-conversion' || formType === 'hidden-conversion') {
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] Hidden conversion form detected via data attribute');
+        }
+        return true;
+      }
+      
+      // Check if form is inside container with ID mkto-hidden-form-conversion
+      // Use jQuery closest() if available, otherwise check parent elements
+      var container = null;
+      if (formElem.closest) {
+        container = formElem.closest('#mkto-hidden-form-conversion');
+      } else {
+        // Fallback: check parent elements manually
+        var current = formElement.parentElement;
+        while (current) {
+          if (current.id === 'mkto-hidden-form-conversion') {
+            container = current;
+            break;
+          }
+          current = current.parentElement;
+        }
+      }
+      
+      if (container && container.length !== 0) {
+        if (DEBUG) {
+          console.log('[3E_RFI Submit] Hidden conversion form detected via container ID');
+        }
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      // If detection fails, default to allowing the form to proceed (safer fallback)
+      if (DEBUG) {
+        console.log('[3E_RFI Submit] Error checking for hidden conversion form:', e);
+      }
+      return false;
     }
   }
 
@@ -74,6 +134,16 @@
             console.log('[3E_RFI Submit] Marketo form detected and ready');
           }
           form.onSuccess(function(values, followUpUrl) {
+            // Check if this is a hidden conversion form (handled by chatbot conversion script)
+            if (isHiddenConversionForm(form)) {
+              if (DEBUG) {
+                console.log('[3E_RFI Submit] Skipping hidden conversion form - handled by chatbot conversion script');
+              }
+              // Return early - don't push rfi_submission event or handle redirect
+              // Let the chatbot conversion script handle it
+              return false;
+            }
+            
             // Push the event to the dataLayer
             pushRFISubmissionEvent();
 
