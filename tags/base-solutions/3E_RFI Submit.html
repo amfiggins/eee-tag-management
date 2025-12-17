@@ -91,25 +91,22 @@
       }
       
       // Check if form is inside container with ID mkto-hidden-form-conversion
-      // Use jQuery closest() if available, otherwise check parent elements
-      var container = null;
-      if (formElem.closest) {
-        container = formElem.closest('#mkto-hidden-form-conversion');
-      } else {
-        // Fallback: check parent elements manually
-        var current = formElement.parentElement;
-        while (current) {
-          if (current.id === 'mkto-hidden-form-conversion') {
-            container = current;
-            break;
+      // First, try native DOM closest() method on formElement
+      if (formElement.closest) {
+        var container = formElement.closest('#mkto-hidden-form-conversion');
+        if (container) {
+          if (DEBUG) {
+            console.log('[3E_RFI Submit] Hidden conversion form detected via container ID (closest method)');
           }
-          current = current.parentElement;
+          return true;
         }
       }
       
-      if (container && container.length !== 0) {
+      // Fallback: use explicit containment checking (for browsers that don't support closest())
+      var hiddenContainer = document.getElementById('mkto-hidden-form-conversion');
+      if (hiddenContainer && hiddenContainer.contains && hiddenContainer.contains(formElement)) {
         if (DEBUG) {
-          console.log('[3E_RFI Submit] Hidden conversion form detected via container ID');
+          console.log('[3E_RFI Submit] Hidden conversion form detected via container ID (contains method)');
         }
         return true;
       }
