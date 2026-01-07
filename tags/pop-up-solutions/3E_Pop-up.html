@@ -1,9 +1,9 @@
 <script>
 // Script Name: 3E_Pop-up
 // Author: Anthony Figgins
-// Description: Injects vendor popup snippet from 3E config (popupTag). Skips if disabled, absent or already injected. Only appends DOM elements (not comments/whitespace).
-// Version: 2.3.1
-// Date Updated: 2025-11-17
+// Description: Injects vendor popup snippet from 3E config (popupTag). Skips if disabled, absent or already injected. Prevents duplicate jQuery loading if jQuery is already present on the page. Loads external scripts sequentially to ensure dependencies are available before inline scripts execute. Only appends DOM elements (not comments/whitespace).
+// Version: 2.5.0
+// Date Updated: 2025-01-15
 // Dependencies: 3E Config
 
 (function(){
@@ -15,7 +15,7 @@
   var DEBUG = CFG && CFG.debugMode === 'true';
   
   if (DEBUG) {
-    console.log('[3E_Pop-up] v2.3.1');
+    console.log('[3E_Pop-up] v2.5.0');
   }
   
   // Check if popup is enabled
@@ -36,31 +36,235 @@
   if (window.__3E_POPUP_INJECTED__) return;
   window.__3E_POPUP_INJECTED__ = 1;
 
+  // Check if jQuery is already loaded
+  var jQueryExists = typeof window.jQuery !== 'undefined' || typeof window.$ !== 'undefined';
+  
+  // Common jQuery CDN patterns to detect
+  var jQueryPatterns = [
+    /jquery[^/]*\.js/i,
+    /jquery[^/]*\.min\.js/i,
+    /ajax\.googleapis\.com.*jquery/i,
+    /cdnjs\.cloudflare\.com.*jquery/i,
+    /code\.jquery\.com/i,
+    /cdn\.jsdelivr\.net.*jquery/i,
+    /unpkg\.com.*jquery/i
+  ];
+  
+  // Function to check if a script URL is jQuery
+  function isJQueryScript(src) {
+    if (!src) return false;
+    for (var p = 0; p < jQueryPatterns.length; p++) {
+      if (jQueryPatterns[p].test(src)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  // Set up jQuery duplicate prevention if jQuery already exists
+  var observer = null;
+  var originalAppendChild = null;
+  var interceptActive = false;
+  
+  if (jQueryExists) {
+    if (DEBUG) {
+      console.log('[3E Pop-up] jQuery detected on page. Setting up duplicate prevention.');
+    }
+    
+    // Store original appendChild methods
+    originalAppendChild = {
+      head: document.head.appendChild,
+      body: document.body.appendChild
+    };
+    
+    // Intercept appendChild on head to prevent jQuery script injection
+    var headAppendChild = document.head.appendChild;
+    document.head.appendChild = function(node) {
+      if (node.tagName === 'SCRIPT' && node.src && isJQueryScript(node.src)) {
+        if (DEBUG) {
+          console.log('[3E Pop-up] Blocked duplicate jQuery script:', node.src);
+        }
+        // Return the node without appending it
+        return node;
+      }
+      return headAppendChild.call(this, node);
+    };
+    
+    // Intercept appendChild on body as well (some scripts append to body)
+    var bodyAppendChild = document.body.appendChild;
+    document.body.appendChild = function(node) {
+      if (node.tagName === 'SCRIPT' && node.src && isJQueryScript(node.src)) {
+        if (DEBUG) {
+          console.log('[3E Pop-up] Blocked duplicate jQuery script:', node.src);
+        }
+        // Return the node without appending it
+        return node;
+      }
+      return bodyAppendChild.call(this, node);
+    };
+    
+    interceptActive = true;
+    
+    // Set up MutationObserver to catch dynamically added scripts
+    observer = new MutationObserver(function(mutations) {
+      mutations.forEach(function(mutation) {
+        mutation.addedNodes.forEach(function(node) {
+          if (node.tagName === 'SCRIPT' && node.src && isJQueryScript(node.src)) {
+            if (DEBUG) {
+              console.log('[3E Pop-up] Detected and removing duplicate jQuery script:', node.src);
+            }
+            // Remove the jQuery script if it was added
+            if (node.parentNode) {
+              node.parentNode.removeChild(node);
+            }
+          }
+        });
+      });
+    });
+    
+    // Observe head and body for script additions
+    observer.observe(document.head, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true });
+    
+    // Clean up interception after 10 seconds (enough time for Digioh script to load)
+    setTimeout(function() {
+      if (interceptActive) {
+        // Restore original appendChild methods
+        document.head.appendChild = originalAppendChild.head;
+        document.body.appendChild = originalAppendChild.body;
+        if (observer) {
+          observer.disconnect();
+        }
+        interceptActive = false;
+        if (DEBUG) {
+          console.log('[3E Pop-up] jQuery duplicate prevention cleanup completed.');
+        }
+      }
+    }, 10000);
+  }
+
   // Build a container for any non-script markup in the snippet
   var div = document.createElement('div');
   div.setAttribute('data-3e','popup');
   div.innerHTML = snippet;
 
-  // Execute any <script> tags found inside the snippet
+  // Separate external scripts from inline scripts
   var scripts = div.querySelectorAll('script');
+  var externalScripts = [];
+  var inlineScripts = [];
+  
   for (var i=0; i<scripts.length; i++){
     var s = scripts[i];
-    var ns = document.createElement('script');
-
-    // Copy attributes (src, type, async, etc.)
-    for (var a=0; a<s.attributes.length; a++){
-      var attr = s.attributes[a];
-      ns.setAttribute(attr.name, attr.value);
+    
+    // Skip jQuery scripts if jQuery already exists
+    if (jQueryExists && s.src && isJQueryScript(s.src)) {
+      if (DEBUG) {
+        console.log('[3E Pop-up] Skipping jQuery script from snippet (jQuery already loaded):', s.src);
+      }
+      continue;
     }
-    ns.type = s.type || 'text/javascript';
-
-    if (s.src){
-      ns.async = true;
-      document.head.appendChild(ns);
+    
+    if (s.src) {
+      // External script - collect for sequential loading
+      var scriptData = {
+        src: s.src,
+        type: s.type || 'text/javascript',
+        attributes: []
+      };
+      // Copy all attributes
+      for (var a=0; a<s.attributes.length; a++){
+        var attr = s.attributes[a];
+        scriptData.attributes.push({name: attr.name, value: attr.value});
+      }
+      externalScripts.push(scriptData);
     } else {
-      ns.text = s.text || s.innerHTML || '';
+      // Inline script - collect for execution after external scripts load
+      inlineScripts.push({
+        text: s.text || s.innerHTML || '',
+        type: s.type || 'text/javascript'
+      });
+    }
+  }
+
+  // Function to load external scripts sequentially
+  function loadScriptSequentially(scriptArray, index, callback) {
+    if (index >= scriptArray.length) {
+      if (callback) callback();
+      return;
+    }
+    
+    var scriptData = scriptArray[index];
+    var ns = document.createElement('script');
+    ns.type = scriptData.type;
+    
+    // Set src first (before other attributes)
+    ns.src = scriptData.src;
+    
+    // Copy all other attributes
+    for (var a=0; a<scriptData.attributes.length; a++){
+      var attr = scriptData.attributes[a];
+      // Skip src and type as we've already set them
+      if (attr.name !== 'src' && attr.name !== 'type') {
+        ns.setAttribute(attr.name, attr.value);
+      }
+    }
+    
+    // Load sequentially (NOT async) - wait for this script to load before loading next
+    ns.async = false;
+    
+    if (DEBUG) {
+      console.log('[3E Pop-up] Loading external script', (index + 1) + '/' + scriptArray.length + ':', scriptData.src);
+    }
+    
+    // Wait for script to load before loading next
+    ns.onload = function() {
+      if (DEBUG) {
+        console.log('[3E Pop-up] External script loaded:', scriptData.src);
+      }
+      loadScriptSequentially(scriptArray, index + 1, callback);
+    };
+    
+    ns.onerror = function() {
+      if (DEBUG) {
+        console.warn('[3E Pop-up] Failed to load external script:', scriptData.src);
+      }
+      // Continue loading next script even if this one fails
+      loadScriptSequentially(scriptArray, index + 1, callback);
+    };
+    
+    document.head.appendChild(ns);
+  }
+
+  // Function to execute inline scripts
+  function executeInlineScripts() {
+    for (var i=0; i<inlineScripts.length; i++){
+      var scriptData = inlineScripts[i];
+      var ns = document.createElement('script');
+      ns.type = scriptData.type;
+      ns.text = scriptData.text;
+      
+      if (DEBUG) {
+        console.log('[3E Pop-up] Executing inline script', (i + 1) + '/' + inlineScripts.length);
+      }
+      
       document.head.appendChild(ns);
     }
+  }
+
+  // Load external scripts sequentially, then execute inline scripts
+  if (externalScripts.length > 0) {
+    loadScriptSequentially(externalScripts, 0, function() {
+      if (DEBUG) {
+        console.log('[3E Pop-up] All external scripts loaded. Executing inline scripts.');
+      }
+      executeInlineScripts();
+    });
+  } else {
+    // No external scripts, execute inline scripts immediately
+    if (DEBUG) {
+      console.log('[3E Pop-up] No external scripts found. Executing inline scripts.');
+    }
+    executeInlineScripts();
   }
 
   // Remove executed scripts from the container to avoid duplication

@@ -20,20 +20,32 @@
 
 ## Introduction
 
-This guide provides comprehensive documentation for deploying and validating 3E Tag Manager scripts in Google Tag Manager (GTM) containers. Each tag is documented with its purpose, how it works, validation steps, and troubleshooting tips.
+This guide provides step-by-step instructions for deploying and testing 3E Tag Manager scripts in Google Tag Manager (GTM). Think of GTM as a container that holds all your website tracking scripts. Each tag (script) is documented with:
+- **What it does** - In plain English, what problem it solves
+- **How it works** - The step-by-step process it follows
+- **How to test it** - Exact steps to verify it's working
+- **How to fix problems** - Common issues and solutions
 
 **Who This Guide Is For:**
-- Deployment team members
-- QA testers
-- Support staff
-- Developers validating tag functionality
+- Anyone deploying tags to websites
+- People testing website functionality
+- Support staff helping troubleshoot issues
+- Anyone who needs to understand what these tags do
 
 **What This Guide Covers:**
-- Tag locations and file paths
-- What each tag does (in simple terms)
-- How each tag works (technical flow)
-- Step-by-step validation procedures
-- Common issues and solutions
+- Where to find each tag file
+- What each tag does (explained simply)
+- How each tag works (step-by-step process)
+- How to test each tag (validation procedures)
+- How to fix common problems (troubleshooting)
+
+**Important Terms Explained:**
+- **GTM (Google Tag Manager)**: A tool that manages all your website tracking scripts in one place
+- **Tag**: A piece of code (script) that does something on your website (like tracking clicks or loading a chatbot)
+- **dataLayer**: A special list that stores events and data that tags can read and use
+- **Marketo Munchkin**: A tracking script from Marketo that records visitor activity
+- **Marketo Forms2**: The system that handles Marketo form submissions
+- **Console**: A developer tool in your browser (press F12) that shows messages and errors
 
 ---
 
@@ -61,10 +73,21 @@ Before deploying any tags, ensure the following are configured:
 
 ### Debug Mode
 
-Enable debug mode in 3E Config to see detailed console logs:
-- Set `debugMode: 'true'` in 3E Config
-- Open browser console (F12) to view debug messages
-- All tags log their version and initialization status when debug mode is enabled
+Debug mode shows you detailed messages about what tags are doing. This is essential for testing and troubleshooting.
+
+**How to Enable:**
+- Set `debugMode: 'true'` in 3E Config (use the word 'true' in quotes, not a checkbox)
+- Open your browser's developer console (press F12, then click the "Console" tab)
+- Reload the page
+- You'll see messages from each tag showing what it's doing
+
+**What You'll See:**
+- Each tag's name and version number
+- Messages when tags start working
+- Messages when events happen (like form submissions or clicks)
+- Error messages if something goes wrong
+
+**Important:** Always disable debug mode (`debugMode: 'false'`) before going live on your website, as it can slow down the page and expose internal details.
 
 ---
 
@@ -87,10 +110,19 @@ The 3E Config is a central configuration hub that stores all settings used by ot
 
 #### How It Works
 
-1. The template is configured in GTM as a Variable
-2. When other tags load, they read configuration values from this variable
-3. Settings include Marketo credentials, chatbot IDs, form validation toggles, and more
-4. All tags reference `{{3E config}}` to access these settings
+Think of 3E Config like a master settings file that all other tags read from. Here's the process:
+
+1. **Setup**: You create the 3E Config as a Variable in GTM (like creating a settings file)
+2. **Configuration**: You enter all your settings in one place (Marketo ID, chatbot settings, etc.)
+3. **Access**: When other tags load, they automatically read these settings using `{{3E config}}`
+4. **Benefits**: Instead of entering the same settings in every tag, you enter them once in 3E Config
+
+**Example Settings Stored:**
+- Marketo tracking ID (munchkinId)
+- Marketo website URL (baseUrl)
+- Chatbot ID (for chatbot features)
+- Form validation settings (on/off switches)
+- Debug mode (on/off switch)
 
 #### Validation Process
 
@@ -106,24 +138,31 @@ The 3E Config is a central configuration hub that stores all settings used by ot
    - Verify `debugMode` is set (for testing: 'true', for production: 'false')
 
 3. **Test Variable Access:**
-   - Enable debug mode in 3E Config
+   - Enable debug mode in 3E Config (set `debugMode: 'true'`)
    - Deploy a tag that uses 3E Config (e.g., 3E_Analytics Tracking)
-   - Check browser console for initialization messages
-   - Verify no "Failed to load 3E config" errors
+   - Open browser console (press F12, click "Console" tab)
+   - Reload the page
+   - Look for initialization messages from the tag
+   - Verify there are NO "Failed to load 3E config" error messages
+   - If you see errors, the variable isn't set up correctly
 
 #### Troubleshooting
 
 **Issue:** Tags show "Failed to load 3E config" errors  
 **Solution:** 
-- Verify 3E Config variable is created in GTM
-- Check variable name matches exactly (case-sensitive)
-- Ensure variable is published in the container
+- **Check Variable Exists**: Go to GTM → Variables → Look for "3E Config" variable
+- **Check Variable Name**: The name must be exactly "3E Config" (case-sensitive, with space and capital E)
+- **Check Variable Type**: It should be a Variable Template (not a regular variable)
+- **Check if Published**: Make sure the variable is published in your GTM container (not just saved as a draft)
+- **Check Variable Reference**: In your tags, make sure you're using `{{3E config}}` (with space, case-sensitive)
 
 **Issue:** Configuration values not applying  
 **Solution:**
-- Verify variable is saved and published
-- Check for typos in configuration keys
-- Clear browser cache and reload page
+- **Check if Published**: Make sure you've published the variable in GTM (not just saved as draft)
+- **Check for Typos**: Look for spelling mistakes in configuration keys (like `munchkinId` vs `munchinId`)
+- **Check JSON Format**: Make sure your configuration is valid JSON (proper quotes, commas, brackets)
+- **Clear Cache**: Clear your browser cache (Ctrl+Shift+Delete or Cmd+Shift+Delete) and reload the page
+- **Check Debug Mode**: Enable debug mode and check console to see what values are actually being read
 
 ---
 
@@ -140,12 +179,23 @@ Tracks user interactions on the page including button clicks, scroll depth, form
 
 #### How It Works
 
-1. Script loads when page loads
-2. Listens for user interactions (clicks, scrolling, form interactions)
-3. Tracks scroll depth at 25%, 50%, 75%, and 100%
-4. Monitors video play/pause/complete events
-5. Measures page load performance
-6. Pushes events to dataLayer for GTM triggers
+This script watches what users do on your website and records it. Here's the process:
+
+1. **Page Load**: When someone visits your page, the script starts running
+2. **Watching**: It continuously watches for user actions:
+   - Button clicks
+   - How far they scroll down the page
+   - Form interactions (typing, clicking fields)
+   - Video watching (play, pause, completion)
+   - How fast the page loads
+3. **Recording**: When something happens, it records it:
+   - Scroll depth: Records when user scrolls 25%, 50%, 75%, or 100% down the page
+   - Clicks: Records which buttons/links were clicked
+   - Forms: Records when users interact with form fields
+   - Videos: Records when videos are played, paused, or completed
+4. **Sending Data**: It sends this information to the dataLayer (a special list that other tools can read)
+
+**Why This Matters:** This data helps you understand how people use your website - what they click, how much they read, and what interests them.
 
 #### Validation Process
 
@@ -177,15 +227,19 @@ Tracks user interactions on the page including button clicks, scroll depth, form
 
 **Issue:** No scroll tracking events  
 **Solution:**
-- Verify script is loaded (check console for initialization)
-- Check if page is long enough to trigger scroll events
-- Verify 3E Config is loaded correctly
+- **Check Script Loaded**: Open console (F12) and look for `[3E_Analytics Tracking] v1.2.0` message
+- **Check Page Length**: The page needs to be tall enough to scroll. If the page fits on one screen, scroll events won't fire
+- **Check 3E Config**: Verify 3E Config is loaded (no "Failed to load 3E config" errors)
+- **Check Debug Mode**: Make sure debug mode is enabled to see scroll event messages
+- **Try Scrolling**: Manually scroll to 25%, 50%, 75%, and 100% of the page and watch console for messages
 
 **Issue:** Click events not firing  
 **Solution:**
-- Verify buttons/links have correct CSS classes
-- Check console for click detection messages
-- Ensure elements are clickable (not covered by other elements)
+- **Check CSS Classes**: Verify buttons/links have the correct CSS classes that the script is looking for (check the script code or documentation for which classes it tracks)
+- **Check Console**: Enable debug mode and look for click detection messages when you click
+- **Check Element Visibility**: Make sure the button/link is actually clickable (not hidden behind another element or disabled)
+- **Check Browser Console**: Look for any JavaScript errors that might be preventing click tracking
+- **Test Different Elements**: Try clicking different buttons to see if some work and others don't
 
 ---
 
@@ -202,11 +256,15 @@ Tracks how long users stay on a page by sending "visit" events to Marketo at reg
 
 #### How It Works
 
-1. Script loads when page loads
-2. Waits for Marketo Munchkin to be available
-3. Sends visit events to Marketo at configurable intervals (default: every 30 seconds)
-4. Continues tracking as long as user stays on page
-5. Stops when user navigates away
+This script measures how long visitors stay on your page by sending "I'm still here" messages to Marketo:
+
+1. **Page Load**: When someone visits your page, the script starts
+2. **Wait for Marketo**: It waits for Marketo's tracking system (Munchkin) to be ready
+3. **Send Updates**: Every 30 seconds (or whatever interval you set), it sends a "visit" event to Marketo saying "This person is still on the page"
+4. **Keep Tracking**: It continues sending these updates as long as the person stays on the page
+5. **Stop When They Leave**: When the person navigates to another page or closes the browser, it stops
+
+**Why This Matters:** This helps you measure engagement - how long people actually spend reading your content, not just how many people visited.
 
 #### Validation Process
 
@@ -232,15 +290,19 @@ Tracks how long users stay on a page by sending "visit" events to Marketo at reg
 
 **Issue:** "Marketo Munchkin not detected" error  
 **Solution:**
-- Verify Marketo Munchkin is loaded on page
-- Deploy 3E_Insights Pixel to load Munchkin dynamically
-- Check Munchkin ID in 3E Config matches Marketo instance
+- **Check if Munchkin is Loaded**: Open browser console and type `window.Munchkin` - if it says "undefined", Munchkin isn't loaded
+- **Load Munchkin**: Deploy the 3E_Insights Pixel tag, which will load Munchkin if it's not already on the page
+- **Check Munchkin ID**: Verify the `munchkinId` in 3E Config matches your Marketo instance ID (found in Marketo admin settings)
+- **Check Network Tab**: Open browser DevTools → Network tab → Reload page → Look for requests to Marketo (should see munchkin.js loading)
+- **Check Timing**: Sometimes Munchkin loads slowly - wait a few seconds and check again
 
 **Issue:** Visit events not sending  
 **Solution:**
-- Verify Munchkin is loaded (check console)
-- Check interval setting in 3E Config
-- Verify page is active (not in background tab)
+- **Check Munchkin**: Verify Munchkin is loaded (type `window.Munchkin` in console - should not be undefined)
+- **Check Interval**: Verify the interval setting in 3E Config (default is 30 seconds, so you need to wait at least 30 seconds)
+- **Check Page Active**: Make sure the browser tab is active (not in background) - most browsers pause scripts in background tabs
+- **Check Debug Mode**: Enable debug mode and watch console for visit event messages
+- **Check Marketo**: Log into Marketo and check the activity log for the lead to see if visit events are being received
 
 ---
 
@@ -257,17 +319,21 @@ Adds extra validation to Marketo forms to prevent spam and ensure data quality. 
 
 #### How It Works
 
-1. Script waits for Marketo Forms2 to load
-2. Finds Marketo forms on the page
-3. Skips hidden conversion forms (handled by chatbot script)
-4. Adds validation rules based on 3E Config settings:
-   - Name validation (first name ≠ last name)
-   - Default name prevention
-   - EDU email validation
-   - IP blocking
-   - Math question challenge
-5. Shows error messages if validation fails
-6. Prevents form submission until validation passes
+This script adds extra security checks to your forms to prevent spam and bad data. Here's how:
+
+1. **Wait for Forms**: The script waits for Marketo's form system to load
+2. **Find Forms**: It looks for all Marketo forms on the page
+3. **Skip Hidden Forms**: It ignores hidden forms used by chatbots (those are handled separately)
+4. **Add Security Checks**: Based on your settings, it adds these checks:
+   - **Name Check**: Makes sure first name and last name are different (prevents "John John")
+   - **Default Name Block**: Blocks common test names like "first", "last", "test"
+   - **Email Check**: Can require .edu email addresses only (for student forms)
+   - **IP Blocking**: Can block specific IP addresses (for known spammers)
+   - **Math Question**: Can add a simple math question (like "What is 2 + 3?") to prove the user is human
+5. **Show Errors**: If any check fails, it shows an error message to the user
+6. **Block Submission**: The form won't submit until all checks pass
+
+**Why This Matters:** This prevents spam submissions, fake data, and ensures you only get legitimate form submissions from real people.
 
 #### Validation Process
 
@@ -310,21 +376,27 @@ Adds extra validation to Marketo forms to prevent spam and ensure data quality. 
 
 **Issue:** Validation not running  
 **Solution:**
-- Verify Marketo Forms2 is loaded
-- Check console for form detection messages
-- Verify form is not a hidden conversion form (those are skipped)
+- **Check Marketo Forms2**: Open console and type `window.MktoForms2` - if undefined, Forms2 isn't loaded
+- **Check Console Messages**: Enable debug mode and look for form detection messages when page loads
+- **Check Form Type**: Verify the form is not a hidden conversion form (those are intentionally skipped by this script)
+- **Check Form Loaded**: Make sure the Marketo form has actually loaded on the page (you should see it visually)
+- **Check Timing**: Sometimes forms load slowly - wait a few seconds and check console again
 
 **Issue:** Math question not appearing  
 **Solution:**
-- Verify `formMathValidation: 'true'` in 3E Config
-- Check console for math question creation messages
-- Verify form has space for additional field
+- **Check Setting**: Verify `formMathValidation: 'true'` is set in 3E Config (must be the string 'true', not a boolean)
+- **Check Console**: Enable debug mode and look for math question creation messages
+- **Check Form Space**: Verify the form has room for an additional field (some forms are too compact)
+- **Check Form Type**: Make sure this is a visible form (not a hidden conversion form)
+- **Check Form Loaded**: Ensure the Marketo form has fully loaded before the validation script runs
 
 **Issue:** Validation blocking legitimate submissions  
 **Solution:**
-- Check 3E Config settings for validation toggles
-- Verify IP blocking list doesn't include legitimate IPs
-- Test with different email addresses/names
+- **Check Settings**: Review all validation toggles in 3E Config - you may have enabled a validation that's too strict
+- **Check IP Blocking**: If IP blocking is enabled, verify your IP blocking list doesn't include legitimate IP addresses
+- **Test Different Inputs**: Try submitting with different email addresses and names to see which validation is blocking
+- **Check Error Messages**: Read the error message shown to the user - it will tell you which validation failed
+- **Disable Temporarily**: If needed, temporarily disable specific validations in 3E Config to test which one is causing the issue
 
 ---
 
@@ -344,23 +416,27 @@ Handles form submissions from Marketo forms and 123FormBuilder forms. When a for
 #### How It Works
 
 **For Marketo Forms:**
-1. Script waits for Marketo Forms2 to load
-2. Finds Marketo forms on the page
-3. Checks if form is a hidden conversion form (skips if yes)
-4. Listens for form submission success
-5. When form submits successfully:
-   - Pushes `rfi_submission` event to dataLayer
-   - Handles redirect to thank you page
-   - Prevents default Marketo redirect behavior
+1. **Wait for Forms**: Script waits for Marketo's form system to load
+2. **Find Forms**: It looks for Marketo forms on the page
+3. **Check Form Type**: It checks if the form is a hidden chatbot form (if yes, it skips it - those are handled by a different script)
+4. **Listen for Submission**: It watches for when someone successfully submits the form
+5. **When Form Submits**:
+   - Sends an `rfi_submission` event to the dataLayer (so other tools know a form was submitted)
+   - Handles the redirect to the thank you page
+   - Prevents Marketo's default redirect (so we can control where they go)
 
 **For 123FormBuilder Forms:**
-1. Script searches for 123FormBuilder form elements (IDs starting with `cf_`)
-2. Listens for form success events
-3. Also monitors iframe src changes for thank you page patterns
-4. Listens for postMessage events from 123FormBuilder iframes
-5. When form submits successfully:
-   - Detects submission via scrollToTop postMessage or URL change
-   - Pushes `rfi_submission` event to dataLayer
+1. **Find Forms**: Script looks for 123FormBuilder forms (they have IDs starting with `cf_`)
+2. **Watch for Success**: It listens for signals that the form was submitted successfully
+3. **Multiple Detection Methods**: It uses several ways to detect submission:
+   - Watches for success messages from the form
+   - Monitors iframe changes (123FormBuilder uses iframes)
+   - Listens for special messages (postMessage) from the form
+4. **When Form Submits**:
+   - Detects the submission through one of these methods
+   - Sends an `rfi_submission` event to the dataLayer
+
+**Why This Matters:** This ensures that every form submission is properly tracked and recorded, regardless of which form system you're using.
 
 #### Validation Process
 
@@ -381,10 +457,12 @@ Handles form submissions from Marketo forms and 123FormBuilder forms. When a for
    - Check console for: `[3E_RFI Submit] Pushed rfi_submission event to dataLayer`
 
 4. **Verify dataLayer Event:**
-   - Open browser console
-   - Type: `dataLayer`
-   - Look for event object: `{event: 'rfi_submission'}`
-   - Verify event was pushed
+   - Open browser console (press F12, click "Console" tab)
+   - Type: `dataLayer` and press Enter
+   - You'll see an array of events
+   - Scroll through the array and look for an object that contains: `{event: 'rfi_submission'}`
+   - If you find it, the event was successfully pushed
+   - **Tip:** You can also type `dataLayer.filter(e => e.event === 'rfi_submission')` to find just the rfi_submission events
 
 5. **Verify Redirect:**
    - Check that page redirects to thank you page
@@ -409,10 +487,12 @@ Handles form submissions from Marketo forms and 123FormBuilder forms. When a for
    - Look for: `[3E_RFI Submit] Received scrollToTop postMessage` or `[3E_RFI Submit] Thank you page pattern detected`
 
 4. **Verify dataLayer Event:**
-   - Open browser console
-   - Type: `dataLayer`
-   - Look for event object: `{event: 'rfi_submission'}`
-   - Verify event was pushed
+   - Open browser console (press F12, click "Console" tab)
+   - Type: `dataLayer` and press Enter
+   - You'll see an array of events
+   - Scroll through the array and look for an object that contains: `{event: 'rfi_submission'}`
+   - If you find it, the event was successfully pushed
+   - **Tip:** You can also type `dataLayer.filter(e => e.event === 'rfi_submission')` to find just the rfi_submission events
 
 **Scenario 3: Chatbot Blind Form Submission (Should Be Skipped)**
 
@@ -440,29 +520,38 @@ Handles form submissions from Marketo forms and 123FormBuilder forms. When a for
 
 **Issue:** Marketo form submission not triggering event  
 **Solution:**
-- Verify Marketo Forms2 is loaded
-- Check console for form detection messages
-- Verify form is not a hidden conversion form
-- Check for hardcoded RFI submit scripts (may conflict)
+- **Check Forms2**: Verify Marketo Forms2 is loaded (type `window.MktoForms2` in console)
+- **Check Console**: Enable debug mode and look for form detection messages
+- **Check Form Type**: Verify the form is not a hidden conversion form (those are handled by a different script)
+- **Check for Conflicts**: Look for hardcoded RFI submit scripts on the page that might be interfering (check page source)
+- **Check Form Submission**: Make sure the form actually submits successfully (you should see a success message or redirect)
+- **Check dataLayer**: After submission, check dataLayer for the `rfi_submission` event
 
 **Issue:** 123FormBuilder form not detected  
 **Solution:**
-- Verify form has ID starting with `cf_`
-- Check console for form detection attempts
-- Verify form is loaded before script runs
-- Try adding `?3e_rfi_debug=true` to URL for enhanced logging
+- **Check Form ID**: Verify the form has an ID that starts with `cf_` (inspect the form element to see its ID)
+- **Check Console**: Enable debug mode and look for form detection messages (should say "Found X potential 123FormBuilder form(s)")
+- **Check Timing**: Verify the form is loaded before the script runs (forms in iframes sometimes load slowly)
+- **Enhanced Debugging**: Add `?3e_rfi_debug=true` to the URL for extra detailed logging
+- **Check Form Type**: Make sure it's actually a 123FormBuilder form (not a Marketo form or other form type)
+- **Check iframe**: 123FormBuilder forms often use iframes - make sure the iframe is loaded and accessible
 
 **Issue:** Duplicate rfi_submission events  
 **Solution:**
-- Verify hidden conversion forms are being skipped (check console logs)
-- Check that 3E_3EI Recruiter Conversion script is handling blind forms
-- Verify only one script handles each form type
+- **Check Console Logs**: Enable debug mode and look for messages saying "Skipping hidden conversion form" - this confirms hidden forms are being skipped
+- **Check Script Assignment**: Verify that 3E_3EI Recruiter Conversion script is handling blind/hidden forms, and 3E_RFI Submit is handling visible forms
+- **Check for Multiple Scripts**: Make sure you don't have multiple versions of the same script deployed
+- **Check dataLayer**: After submission, check dataLayer - you should see only ONE `rfi_submission` event
+- **Check Form Type**: Verify hidden forms have the correct data attributes (`data-mkto-form-purpose="hidden-conversion"`)
 
 **Issue:** Event not appearing in dataLayer  
 **Solution:**
-- Verify dataLayer exists: `window.dataLayer = window.dataLayer || []`
-- Check console for push confirmation messages
-- Verify no JavaScript errors preventing execution
+- **Check dataLayer Exists**: Open console and type `window.dataLayer` - it should show an array (if undefined, dataLayer doesn't exist)
+- **Initialize dataLayer**: If dataLayer doesn't exist, add this to your page: `window.dataLayer = window.dataLayer || []`
+- **Check Console**: Enable debug mode and look for "Pushed [event name] event to dataLayer" messages
+- **Check for Errors**: Look for any JavaScript errors in console that might be preventing the script from running
+- **Check GTM Preview**: Use GTM Preview mode to see if events are being detected by GTM
+- **Check Timing**: Sometimes events are pushed before you check - reload page and check dataLayer immediately after the action
 
 ---
 
@@ -479,15 +568,19 @@ Dynamically changes the website's favicon (the small icon in the browser tab) ba
 
 #### How It Works
 
-1. Script loads when page loads
-2. Checks if page should run (Marketo landing page or 3enrollment domain)
-3. Checks if favicon URL is provided in 3E Config
-4. If favicon URL is provided:
-   - Removes existing favicon links
-   - Creates new favicon links pointing to configured URL
-   - Injects links into page head
-5. If no favicon URL is provided:
-   - Preserves existing favicons (does not remove them)
+A favicon is the small icon that appears in the browser tab next to your website's name. This script can change it to a custom icon:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Check Page Type**: It checks if this is a Marketo landing page or a 3enrollment domain (only runs on these pages)
+3. **Check Configuration**: It looks to see if you've provided a favicon URL in 3E Config
+4. **If Favicon URL Provided**:
+   - Removes any existing favicon links from the page
+   - Creates new favicon links pointing to your custom icon
+   - Adds these links to the page's `<head>` section (where browsers look for favicons)
+5. **If No Favicon URL**:
+   - Does nothing - leaves the existing favicon alone (won't break anything)
+
+**Why This Matters:** Custom favicons help with branding - your website tab will show your logo instead of a generic icon.
 
 #### Validation Process
 
@@ -550,13 +643,17 @@ Creates sticky (always visible) buttons on mobile devices that stay at the botto
 
 #### How It Works
 
-1. Script loads when page loads
-2. Checks if page should run (Marketo landing page or 3enrollment domain)
-3. Detects mobile viewport (width < 576px)
-4. Finds header elements with sticky button classes (`.hdr_right_v2`)
-5. Applies sticky positioning to header on mobile
-6. Creates chatbot iframe container in sticky header (for chatbot integration)
-7. Adjusts button spacing and styling to match existing buttons
+On mobile devices, this script makes important buttons (like "Apply Now" and "Request Info") stick to the bottom of the screen so they're always visible:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Check Page Type**: It checks if this is a Marketo landing page or 3enrollment domain (only runs on these)
+3. **Detect Mobile**: It checks if the screen is mobile-sized (less than 576 pixels wide)
+4. **Find Buttons**: It looks for the header element that contains your buttons (looks for class `.hdr_right_v2`)
+5. **Make Sticky**: On mobile only, it makes the header stick to the bottom of the screen
+6. **Add Chatbot Space**: It creates a special container in the sticky header where the chatbot can be placed
+7. **Style Buttons**: It adjusts spacing and styling so everything looks good together
+
+**Why This Matters:** On mobile, users often scroll past important buttons. Making them sticky ensures "Apply Now" and "Request Info" are always visible, which increases conversions.
 
 #### Validation Process
 
@@ -623,13 +720,19 @@ Integrates Cloudflare Web Analytics tracking on the website. This provides websi
 
 #### How It Works
 
-1. Script loads when page loads
-2. Checks if Cloudflare token is provided in 3E Config
-3. If token is provided:
-   - Loads Cloudflare Web Analytics script
-   - Initializes tracking with provided token
-4. If no token is provided:
+This script adds Cloudflare Web Analytics tracking to your website:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Check Token**: It checks if you've provided a Cloudflare token in 3E Config
+3. **If Token Provided**:
+   - Loads Cloudflare's analytics tracking script
+   - Starts tracking with your token
+   - Begins collecting website analytics data
+4. **If No Token**:
    - Script does nothing (skips initialization)
+   - No tracking occurs
+
+**Why This Matters:** Cloudflare Web Analytics provides website traffic data and insights about how people use your site, similar to Google Analytics but with privacy-focused tracking.
 
 #### Validation Process
 
@@ -691,13 +794,22 @@ Listens for activity signals from the chatbot iframe and pushes events to the da
 
 #### How It Works
 
-1. Script loads when page loads
-2. Sets up a listener for postMessage events from chatbot iframe
-3. Validates message origin (security check)
-4. When chatbot sends activity signals:
-   - Receives postMessage with activity type
-   - Pushes corresponding event to dataLayer
-   - Events include: `bot_initiated`, `bot_response`, `bot_click_link`, `bot_click_app_link`, `bot_engagement`, `bot_closed`, `bot_email_captured`
+This script listens to what's happening in the chatbot and records those events:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Set Up Listener**: It creates a listener that watches for messages from the chatbot iframe (the chatbot runs in a separate frame for security)
+3. **Security Check**: When it receives a message, it checks where it came from (security check to prevent malicious messages)
+4. **Record Events**: When the chatbot does something, it sends a message, and this script records it:
+   - `bot_initiated` - User opened the chatbot
+   - `bot_response` - User sent a message
+   - `bot_click_link` - User clicked a link in the chatbot
+   - `bot_click_app_link` - User clicked an application link
+   - `bot_engagement` - User is actively engaging
+   - `bot_closed` - User closed the chatbot
+   - `bot_email_captured` - User provided their email
+5. **Send to dataLayer**: Each event is sent to the dataLayer so other tools can use it
+
+**Why This Matters:** This tracking helps you understand how people interact with your chatbot - what they ask, what links they click, and whether they provide contact information.
 
 #### Validation Process
 
@@ -755,14 +867,20 @@ Handles chatbot conversion form submissions. When a user submits information thr
 
 #### How It Works
 
-1. Script loads when page loads
-2. Waits for Marketo Forms2 to load
-3. Finds hidden conversion forms (marked with data attributes or in hidden container)
-4. Sets up form submission handler
-5. When form submits:
-   - Submits data to Marketo
-   - Pushes `rfi_submission` event to dataLayer
-   - Prevents page navigation (keeps user on page)
+This script handles form submissions that happen inside the chatbot (called "blind forms" or "hidden conversion forms"):
+
+1. **Page Load**: When the page loads, the script starts
+2. **Wait for Forms**: It waits for Marketo's form system to load
+3. **Find Hidden Forms**: It looks for hidden forms that are used by the chatbot (these forms are invisible to users but collect their information)
+4. **Set Up Handler**: It prepares to handle when someone submits the form through the chatbot
+5. **When Form Submits**:
+   - Sends the form data to Marketo (saves the lead information)
+   - Sends an `rfi_submission` event to the dataLayer (so other tools know a form was submitted)
+   - Keeps the user on the same page (doesn't redirect them away)
+
+**Important:** This is the ONLY script that should handle hidden chatbot forms. The regular 3E_RFI Submit script is told to skip these forms to prevent duplicate submissions.
+
+**Why This Matters:** When users interact with the chatbot and provide their information, this ensures that data is properly saved to Marketo and tracked, without disrupting the user's chatbot experience.
 
 #### Validation Process
 
@@ -827,13 +945,17 @@ Sends chatbot events to Marketo via Munchkin tracking. When chatbot events occur
 
 #### How It Works
 
-1. Script loads when page loads
-2. Waits for Marketo Munchkin to be available
-3. Listens for chatbot events in dataLayer
-4. When chatbot events occur:
-   - Captures event data
-   - Sends tracking data to Marketo via Munchkin
-   - Records activity in Marketo
+This script takes chatbot activity events and sends them to Marketo for tracking:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Wait for Marketo**: It waits for Marketo's tracking system (Munchkin) to be ready
+3. **Watch for Events**: It watches the dataLayer for chatbot events (like when someone opens the chatbot, sends a message, or closes it)
+4. **When Events Happen**:
+   - Captures the event information (what happened, when, etc.)
+   - Sends this data to Marketo using Munchkin
+   - Records the activity in Marketo's system (so you can see chatbot interactions in Marketo)
+
+**Why This Matters:** This connects chatbot activity to your Marketo lead records, so you can see in Marketo when someone interacted with your chatbot, what they asked about, and whether they provided contact information.
 
 #### Validation Process
 
@@ -887,16 +1009,25 @@ Loads the chatbot iframe on the page. It can load either a development or produc
 
 #### How It Works
 
-1. Script loads when page loads
-2. Checks chatbot environment setting in 3E Config (disabled/dev/prod)
-3. If disabled, script exits
-4. If dev or prod:
-   - Gets chatbot ID from 3E Config
-   - Creates iframe element
-   - Sets iframe source to chatbot URL
-   - Places iframe in sticky container (if available) or fixed position
-   - Sets up postMessage communication with iframe
-   - Handles iframe expansion/collapse based on chatbot state
+This script loads and displays the chatbot on your website:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Check Settings**: It checks the chatbot environment setting in 3E Config:
+   - `disabled` - Chatbot won't appear
+   - `dev` - Development chatbot (for testing)
+   - `prod` - Production chatbot (live version)
+3. **If Disabled**: Script stops and does nothing
+4. **If Dev or Prod**:
+   - Gets the chatbot ID from 3E Config (which chatbot to load)
+   - Creates an iframe (a window that displays the chatbot)
+   - Sets the iframe to load the chatbot from the correct URL
+   - Places the iframe:
+     - On mobile: Inside the sticky button bar (if available)
+     - On desktop: In a fixed position (usually bottom-right corner)
+   - Sets up communication with the chatbot (so they can send messages back and forth)
+   - Handles expanding/collapsing the chatbot when users open or close it
+
+**Why This Matters:** This is what actually puts the chatbot on your website. Without this script, the chatbot won't appear, even if all the other chatbot scripts are deployed.
 
 #### Validation Process
 
@@ -972,13 +1103,17 @@ Loads Marketo Munchkin tracking script and Insights pixel for analytics. This en
 
 #### How It Works
 
-1. Script loads when page loads
-2. Checks if Marketo Munchkin is already loaded
-3. If not loaded:
-   - Loads Munchkin script from Marketo
-   - Initializes Munchkin with ID from 3E Config
-4. Loads Insights pixel for analytics
-5. Ensures tracking is available for other tags
+This script ensures Marketo tracking is available on your page, even if it's not loaded elsewhere:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Check for Munchkin**: It checks if Marketo's tracking script (Munchkin) is already loaded on the page
+3. **If Not Loaded**:
+   - Loads the Munchkin script from Marketo's servers
+   - Starts tracking with your Munchkin ID from 3E Config
+4. **Load Insights Pixel**: It also loads Marketo's Insights pixel (for additional analytics)
+5. **Make Available**: This ensures Marketo tracking is ready for all other tags that need it
+
+**Why This Matters:** Some websites don't have Marketo tracking loaded by default. This script ensures it's always available, so all your Marketo-related tags can work properly. It's like a safety net - if Munchkin isn't loaded elsewhere, this script loads it.
 
 #### Validation Process
 
@@ -1037,16 +1172,20 @@ Injects a vendor pop-up snippet (like Pardot, OptinMonster, etc.) into the page.
 
 #### How It Works
 
-1. Script loads when page loads
-2. Checks if pop-up is enabled in 3E Config (`popupEnvironment: 'enabled'`)
-3. Checks if pop-up snippet exists in 3E Config (`popupTag`)
-4. If enabled and snippet exists:
-   - Creates container div
-   - Injects pop-up snippet HTML
-   - Executes any script tags in snippet
-   - Marks as injected to prevent duplicates
-5. If disabled or no snippet:
-   - Script does nothing
+This script adds a pop-up (like a pop-up form or offer) to your website:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Check if Enabled**: It checks if pop-ups are enabled in 3E Config (`popupEnvironment: 'enabled'`)
+3. **Check for Code**: It checks if you've provided pop-up code in 3E Config (`popupTag`)
+4. **If Enabled and Code Exists**:
+   - Creates a container on the page
+   - Injects your pop-up code into the container
+   - Runs any scripts in the pop-up code (so the pop-up actually works)
+   - Marks it as injected (so it doesn't add the pop-up twice)
+5. **If Disabled or No Code**:
+   - Script does nothing (no pop-up appears)
+
+**Why This Matters:** This allows you to add vendor pop-ups (like Pardot, OptinMonster, etc.) to your website through GTM, without having to modify your website code directly.
 
 #### Validation Process
 
@@ -1109,11 +1248,15 @@ Integrates Marketo forms into pop-ups. When a pop-up displays, it can contain a 
 
 #### How It Works
 
-1. Script loads when page loads
-2. Waits for Marketo Forms2 to load
-3. Finds Marketo forms within pop-up containers
-4. Sets up form handling for pop-up forms
-5. Manages form display and submission within pop-up context
+This script makes Marketo forms work properly inside pop-ups:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Wait for Forms**: It waits for Marketo's form system to load
+3. **Find Pop-up Forms**: It looks for Marketo forms that are inside pop-up containers
+4. **Set Up Handling**: It prepares the forms to work correctly within the pop-up (handles display, validation, etc.)
+5. **Manage Submission**: It ensures form submissions work properly when submitted from within the pop-up
+
+**Why This Matters:** Sometimes Marketo forms don't work correctly when placed inside pop-ups. This script ensures they function properly, so users can successfully submit forms from pop-ups.
 
 #### Validation Process
 
@@ -1164,13 +1307,20 @@ Tracks pop-up events (display, close, interaction) and sends tracking data to Ma
 
 #### How It Works
 
-1. Script loads when page loads
-2. Waits for Marketo Munchkin to be available
-3. Listens for pop-up events (display, close, form submission)
-4. When pop-up events occur:
-   - Captures event data
-   - Sends tracking data to Marketo via Munchkin
-   - Records activity in Marketo
+This script tracks what happens with pop-ups and sends that data to Marketo:
+
+1. **Page Load**: When the page loads, the script starts
+2. **Wait for Marketo**: It waits for Marketo's tracking system (Munchkin) to be ready
+3. **Watch for Events**: It watches for pop-up events:
+   - When pop-up is displayed (shown to user)
+   - When pop-up is closed (user dismisses it)
+   - When form in pop-up is submitted
+4. **When Events Happen**:
+   - Captures the event information (what happened, when, etc.)
+   - Sends this data to Marketo using Munchkin
+   - Records the activity in Marketo (so you can see pop-up interactions in Marketo)
+
+**Why This Matters:** This helps you measure pop-up effectiveness - how many people see it, how many close it, and how many submit forms. This data appears in Marketo so you can track ROI and engagement.
 
 #### Validation Process
 

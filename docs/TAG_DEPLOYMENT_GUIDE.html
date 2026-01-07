@@ -1,0 +1,1779 @@
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>3E Tag Manager Deployment Guide</title>
+        
+    <style>
+        @media print {
+            @page {
+                size: letter;
+                margin: 0.75in;
+            }
+            body {
+                font-size: 10pt;
+            }
+            h1 {
+                page-break-after: avoid;
+            }
+            h2, h3 {
+                page-break-after: avoid;
+            }
+            pre, code {
+                page-break-inside: avoid;
+            }
+        }
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.6;
+            color: #333;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+        }
+        
+        h1 {
+            font-size: 28pt;
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-top: 0;
+            margin-bottom: 25px;
+            page-break-after: avoid;
+        }
+        
+        h2 {
+            font-size: 22pt;
+            color: #34495e;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #ecf0f1;
+            padding-bottom: 8px;
+            page-break-after: avoid;
+        }
+        
+        h3 {
+            font-size: 18pt;
+            color: #34495e;
+            margin-top: 25px;
+            margin-bottom: 12px;
+            page-break-after: avoid;
+        }
+        
+        h4 {
+            font-size: 14pt;
+            color: #34495e;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        p {
+            margin: 10px 0;
+            text-align: justify;
+        }
+        
+        code {
+            background-color: #f4f4f4;
+            padding: 3px 6px;
+            border-radius: 3px;
+            font-family: "Courier New", "Monaco", "Consolas", monospace;
+            font-size: 10pt;
+            color: #e83e8c;
+        }
+        
+        pre {
+            background-color: #f8f8f8;
+            border: 1px solid #ddd;
+            border-left: 4px solid #3498db;
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            font-size: 10pt;
+            line-height: 1.4;
+            page-break-inside: avoid;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #333;
+            border: none;
+        }
+        
+        ul, ol {
+            margin: 15px 0;
+            padding-left: 35px;
+        }
+        
+        li {
+            margin: 8px 0;
+        }
+        
+        ul li {
+            list-style-type: disc;
+        }
+        
+        ol li {
+            list-style-type: decimal;
+        }
+        
+        blockquote {
+            border-left: 4px solid #3498db;
+            padding-left: 20px;
+            margin: 20px 0;
+            color: #555;
+            font-style: italic;
+        }
+        
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 20px 0;
+            page-break-inside: avoid;
+        }
+        
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        strong {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        
+        em {
+            font-style: italic;
+        }
+        
+        a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        hr {
+            border: none;
+            border-top: 2px solid #ecf0f1;
+            margin: 30px 0;
+        }
+        
+        .toc {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .toc ul {
+            list-style-type: none;
+            padding-left: 0;
+        }
+        
+        .toc li {
+            margin: 5px 0;
+        }
+        
+        .toc a {
+            color: #495057;
+            text-decoration: none;
+        }
+        
+        .toc a:hover {
+            color: #3498db;
+            text-decoration: underline;
+        }
+        
+        /* Print instructions banner */
+        .print-instructions {
+            background-color: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 30px;
+            font-size: 12pt;
+        }
+        
+        .print-instructions strong {
+            color: #856404;
+            display: block;
+            margin-bottom: 8px;
+        }
+        
+        .print-instructions code {
+            background-color: #fff;
+            padding: 2px 6px;
+        }
+        
+        @media print {
+            .print-instructions {
+                display: none;
+            }
+        }
+    </style>
+    
+    </head>
+    <body>
+        <div class="print-instructions">
+            <strong>📄 To Create PDF:</strong>
+            <ul style="margin: 8px 0; padding-left: 25px;">
+                <li><strong>Mac:</strong> Press <code>Cmd+P</code> → Click "Save as PDF"</li>
+                <li><strong>Windows:</strong> Press <code>Ctrl+P</code> → Select "Save as PDF" or "Microsoft Print to PDF"</li>
+                <li><strong>Chrome/Edge:</strong> Press <code>Ctrl+P</code> or <code>Cmd+P</code> → Destination: "Save as PDF"</li>
+            </ul>
+            <p style="margin: 8px 0 0 0; font-size: 10pt; color: #856404;">
+                This banner will not appear in the printed PDF.
+            </p>
+        </div>
+        <h1 id="3e-tag-manager-deployment-guide">3E Tag Manager Deployment Guide</h1>
+<p><strong>Version:</strong> 1.0.0<br />
+<strong>Last Updated:</strong> 2025-12-17<br />
+<strong>Author:</strong> 3E Enrollment Development Team</p>
+<hr />
+<h2 id="table-of-contents">Table of Contents</h2>
+<ol>
+<li><a href="#introduction">Introduction</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#base-solutions">Base Solutions</a></li>
+<li><a href="#chatbot-solutions">Chatbot Solutions</a></li>
+<li><a href="#pop-up-solutions">Pop-up Solutions</a></li>
+<li><a href="#general-troubleshooting">General Troubleshooting</a></li>
+<li><a href="#debug-mode-usage">Debug Mode Usage</a></li>
+</ol>
+<hr />
+<h2 id="introduction">Introduction</h2>
+<p>This guide provides step-by-step instructions for deploying and testing 3E Tag Manager scripts in Google Tag Manager (GTM). Think of GTM as a container that holds all your website tracking scripts. Each tag (script) is documented with:
+- <strong>What it does</strong> - In plain English, what problem it solves
+- <strong>How it works</strong> - The step-by-step process it follows
+- <strong>How to test it</strong> - Exact steps to verify it's working
+- <strong>How to fix problems</strong> - Common issues and solutions</p>
+<p><strong>Who This Guide Is For:</strong>
+- Anyone deploying tags to websites
+- People testing website functionality
+- Support staff helping troubleshoot issues
+- Anyone who needs to understand what these tags do</p>
+<p><strong>What This Guide Covers:</strong>
+- Where to find each tag file
+- What each tag does (explained simply)
+- How each tag works (step-by-step process)
+- How to test each tag (validation procedures)
+- How to fix common problems (troubleshooting)</p>
+<p><strong>Important Terms Explained:</strong>
+- <strong>GTM (Google Tag Manager)</strong>: A tool that manages all your website tracking scripts in one place
+- <strong>Tag</strong>: A piece of code (script) that does something on your website (like tracking clicks or loading a chatbot)
+- <strong>dataLayer</strong>: A special list that stores events and data that tags can read and use
+- <strong>Marketo Munchkin</strong>: A tracking script from Marketo that records visitor activity
+- <strong>Marketo Forms2</strong>: The system that handles Marketo form submissions
+- <strong>Console</strong>: A developer tool in your browser (press F12) that shows messages and errors</p>
+<hr />
+<h2 id="prerequisites">Prerequisites</h2>
+<h3 id="required-setup">Required Setup</h3>
+<p>Before deploying any tags, ensure the following are configured:</p>
+<ol>
+<li><strong>3E Config Variable Template</strong></li>
+<li><strong>Location:</strong> <code>tags/base-solutions/Template - 3E Config.html</code></li>
+<li><strong>Type:</strong> GTM Variable Template</li>
+<li><strong>Must be deployed FIRST</strong> before any other tags</li>
+<li>
+<p>Contains all configuration settings used by other tags</p>
+</li>
+<li>
+<p><strong>GTM Container Access</strong></p>
+</li>
+<li>Ensure you have appropriate permissions (Edit, Publish)</li>
+<li>Verify container ID is correct</li>
+<li>
+<p>Confirm account ID matches the container</p>
+</li>
+<li>
+<p><strong>Dependencies</strong></p>
+</li>
+<li><strong>Marketo Munchkin:</strong> Required for tracking tags (loaded automatically or via 3E_Insights Pixel)</li>
+<li><strong>Marketo Forms2:</strong> Required for form-related tags (loaded automatically by Marketo forms)</li>
+<li><strong>3E Config:</strong> Required for all tags except Template - 3E Config</li>
+</ol>
+<h3 id="debug-mode">Debug Mode</h3>
+<p>Debug mode shows you detailed messages about what tags are doing. This is essential for testing and troubleshooting.</p>
+<p><strong>How to Enable:</strong>
+- Set <code>debugMode: 'true'</code> in 3E Config (use the word 'true' in quotes, not a checkbox)
+- Open your browser's developer console (press F12, then click the "Console" tab)
+- Reload the page
+- You'll see messages from each tag showing what it's doing</p>
+<p><strong>What You'll See:</strong>
+- Each tag's name and version number
+- Messages when tags start working
+- Messages when events happen (like form submissions or clicks)
+- Error messages if something goes wrong</p>
+<p><strong>Important:</strong> Always disable debug mode (<code>debugMode: 'false'</code>) before going live on your website, as it can slow down the page and expose internal details.</p>
+<hr />
+<h2 id="base-solutions">Base Solutions</h2>
+<p>Base solutions provide core functionality for all client implementations. These should be deployed for every client.</p>
+<hr />
+<h3 id="template-3e-config">Template - 3E Config</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/Template - 3E Config.html</code><br />
+<strong>Version:</strong> 2.2<br />
+<strong>Type:</strong> GTM Variable Template<br />
+<strong>Dependencies:</strong> None</p>
+<h4 id="what-it-does">What It Does</h4>
+<p>The 3E Config is a central configuration hub that stores all settings used by other tags. Think of it as a settings file that all other scripts read from. It must be set up as a GTM Variable Template before deploying any other tags.</p>
+<h4 id="how-it-works">How It Works</h4>
+<p>Think of 3E Config like a master settings file that all other tags read from. Here's the process:</p>
+<ol>
+<li><strong>Setup</strong>: You create the 3E Config as a Variable in GTM (like creating a settings file)</li>
+<li><strong>Configuration</strong>: You enter all your settings in one place (Marketo ID, chatbot settings, etc.)</li>
+<li><strong>Access</strong>: When other tags load, they automatically read these settings using <code>{{3E config}}</code></li>
+<li><strong>Benefits</strong>: Instead of entering the same settings in every tag, you enter them once in 3E Config</li>
+</ol>
+<p><strong>Example Settings Stored:</strong>
+- Marketo tracking ID (munchkinId)
+- Marketo website URL (baseUrl)
+- Chatbot ID (for chatbot features)
+- Form validation settings (on/off switches)
+- Debug mode (on/off switch)</p>
+<h4 id="validation-process">Validation Process</h4>
+<ol>
+<li><strong>Verify Variable Setup:</strong></li>
+<li>Go to GTM → Variables</li>
+<li>Confirm "3E Config" variable exists</li>
+<li>
+<p>Check that it's configured with required settings</p>
+</li>
+<li>
+<p><strong>Verify Configuration Values:</strong></p>
+</li>
+<li>Open variable configuration</li>
+<li>Verify <code>baseUrl</code> is set (Marketo instance URL)</li>
+<li>Verify <code>munchkinId</code> is set (Marketo tracking ID)</li>
+<li>
+<p>Verify <code>debugMode</code> is set (for testing: 'true', for production: 'false')</p>
+</li>
+<li>
+<p><strong>Test Variable Access:</strong></p>
+</li>
+<li>Enable debug mode in 3E Config (set <code>debugMode: 'true'</code>)</li>
+<li>Deploy a tag that uses 3E Config (e.g., 3E_Analytics Tracking)</li>
+<li>Open browser console (press F12, click "Console" tab)</li>
+<li>Reload the page</li>
+<li>Look for initialization messages from the tag</li>
+<li>Verify there are NO "Failed to load 3E config" error messages</li>
+<li>If you see errors, the variable isn't set up correctly</li>
+</ol>
+<h4 id="troubleshooting">Troubleshooting</h4>
+<p><strong>Issue:</strong> Tags show "Failed to load 3E config" errors<br />
+<strong>Solution:</strong> 
+- <strong>Check Variable Exists</strong>: Go to GTM → Variables → Look for "3E Config" variable
+- <strong>Check Variable Name</strong>: The name must be exactly "3E Config" (case-sensitive, with space and capital E)
+- <strong>Check Variable Type</strong>: It should be a Variable Template (not a regular variable)
+- <strong>Check if Published</strong>: Make sure the variable is published in your GTM container (not just saved as a draft)
+- <strong>Check Variable Reference</strong>: In your tags, make sure you're using <code>{{3E config}}</code> (with space, case-sensitive)</p>
+<p><strong>Issue:</strong> Configuration values not applying<br />
+<strong>Solution:</strong>
+- <strong>Check if Published</strong>: Make sure you've published the variable in GTM (not just saved as draft)
+- <strong>Check for Typos</strong>: Look for spelling mistakes in configuration keys (like <code>munchkinId</code> vs <code>munchinId</code>)
+- <strong>Check JSON Format</strong>: Make sure your configuration is valid JSON (proper quotes, commas, brackets)
+- <strong>Clear Cache</strong>: Clear your browser cache (Ctrl+Shift+Delete or Cmd+Shift+Delete) and reload the page
+- <strong>Check Debug Mode</strong>: Enable debug mode and check console to see what values are actually being read</p>
+<hr />
+<h3 id="3e_analytics-tracking">3E_Analytics Tracking</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_Analytics Tracking.html</code><br />
+<strong>Version:</strong> 1.2.0<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_1">What It Does</h4>
+<p>Tracks user interactions on the page including button clicks, scroll depth, form interactions, video engagement, and page performance. This data is sent to analytics platforms and helps understand how users engage with the website.</p>
+<h4 id="how-it-works_1">How It Works</h4>
+<p>This script watches what users do on your website and records it. Here's the process:</p>
+<ol>
+<li><strong>Page Load</strong>: When someone visits your page, the script starts running</li>
+<li><strong>Watching</strong>: It continuously watches for user actions:</li>
+<li>Button clicks</li>
+<li>How far they scroll down the page</li>
+<li>Form interactions (typing, clicking fields)</li>
+<li>Video watching (play, pause, completion)</li>
+<li>How fast the page loads</li>
+<li><strong>Recording</strong>: When something happens, it records it:</li>
+<li>Scroll depth: Records when user scrolls 25%, 50%, 75%, or 100% down the page</li>
+<li>Clicks: Records which buttons/links were clicked</li>
+<li>Forms: Records when users interact with form fields</li>
+<li>Videos: Records when videos are played, paused, or completed</li>
+<li><strong>Sending Data</strong>: It sends this information to the dataLayer (a special list that other tools can read)</li>
+</ol>
+<p><strong>Why This Matters:</strong> This data helps you understand how people use your website - what they click, how much they read, and what interests them.</p>
+<h4 id="validation-process_1">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Analytics Tracking] v1.2.0</code></li>
+<li>
+<p>Verify script initialized message</p>
+</li>
+<li>
+<p><strong>Test Scroll Tracking:</strong></p>
+</li>
+<li>Scroll page to 25%, 50%, 75%, 100%</li>
+<li>Check console for scroll depth events</li>
+<li>
+<p>Verify dataLayer events: <code>scroll_depth_25</code>, <code>scroll_depth_50</code>, etc.</p>
+</li>
+<li>
+<p><strong>Test Click Tracking:</strong></p>
+</li>
+<li>Click on buttons/links with CTA classes</li>
+<li>Check console for click tracking messages</li>
+<li>
+<p>Verify dataLayer events for clicks</p>
+</li>
+<li>
+<p><strong>Test Form Interaction:</strong></p>
+</li>
+<li>Interact with form fields</li>
+<li>Check console for form interaction events</li>
+<li>Verify dataLayer events for form interactions</li>
+</ol>
+<h4 id="troubleshooting_1">Troubleshooting</h4>
+<p><strong>Issue:</strong> No scroll tracking events<br />
+<strong>Solution:</strong>
+- <strong>Check Script Loaded</strong>: Open console (F12) and look for <code>[3E_Analytics Tracking] v1.2.0</code> message
+- <strong>Check Page Length</strong>: The page needs to be tall enough to scroll. If the page fits on one screen, scroll events won't fire
+- <strong>Check 3E Config</strong>: Verify 3E Config is loaded (no "Failed to load 3E config" errors)
+- <strong>Check Debug Mode</strong>: Make sure debug mode is enabled to see scroll event messages
+- <strong>Try Scrolling</strong>: Manually scroll to 25%, 50%, 75%, and 100% of the page and watch console for messages</p>
+<p><strong>Issue:</strong> Click events not firing<br />
+<strong>Solution:</strong>
+- <strong>Check CSS Classes</strong>: Verify buttons/links have the correct CSS classes that the script is looking for (check the script code or documentation for which classes it tracks)
+- <strong>Check Console</strong>: Enable debug mode and look for click detection messages when you click
+- <strong>Check Element Visibility</strong>: Make sure the button/link is actually clickable (not hidden behind another element or disabled)
+- <strong>Check Browser Console</strong>: Look for any JavaScript errors that might be preventing click tracking
+- <strong>Test Different Elements</strong>: Try clicking different buttons to see if some work and others don't</p>
+<hr />
+<h3 id="3e_page-activity">3E_Page Activity</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_Page Activity.html</code><br />
+<strong>Version:</strong> 1.3.1<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config, Marketo Munchkin</p>
+<h4 id="what-it-does_2">What It Does</h4>
+<p>Tracks how long users stay on a page by sending "visit" events to Marketo at regular intervals. This helps measure engagement and time spent on pages.</p>
+<h4 id="how-it-works_2">How It Works</h4>
+<p>This script measures how long visitors stay on your page by sending "I'm still here" messages to Marketo:</p>
+<ol>
+<li><strong>Page Load</strong>: When someone visits your page, the script starts</li>
+<li><strong>Wait for Marketo</strong>: It waits for Marketo's tracking system (Munchkin) to be ready</li>
+<li><strong>Send Updates</strong>: Every 30 seconds (or whatever interval you set), it sends a "visit" event to Marketo saying "This person is still on the page"</li>
+<li><strong>Keep Tracking</strong>: It continues sending these updates as long as the person stays on the page</li>
+<li><strong>Stop When They Leave</strong>: When the person navigates to another page or closes the browser, it stops</li>
+</ol>
+<p><strong>Why This Matters:</strong> This helps you measure engagement - how long people actually spend reading your content, not just how many people visited.</p>
+<h4 id="validation-process_2">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Page Activity] v1.3.1</code></li>
+<li>
+<p>Verify "Page Activity Script Initialized" message</p>
+</li>
+<li>
+<p><strong>Verify Marketo Munchkin:</strong></p>
+</li>
+<li>Check console for "Marketo Munchkin detected" message</li>
+<li>
+<p>If not detected, verify Munchkin is loaded or 3E_Insights Pixel is deployed</p>
+</li>
+<li>
+<p><strong>Test Visit Tracking:</strong></p>
+</li>
+<li>Stay on page for 30+ seconds</li>
+<li>Check console for visit event messages</li>
+<li>Verify Marketo receives visit events (check Marketo activity log)</li>
+</ol>
+<h4 id="troubleshooting_2">Troubleshooting</h4>
+<p><strong>Issue:</strong> "Marketo Munchkin not detected" error<br />
+<strong>Solution:</strong>
+- <strong>Check if Munchkin is Loaded</strong>: Open browser console and type <code>window.Munchkin</code> - if it says "undefined", Munchkin isn't loaded
+- <strong>Load Munchkin</strong>: Deploy the 3E_Insights Pixel tag, which will load Munchkin if it's not already on the page
+- <strong>Check Munchkin ID</strong>: Verify the <code>munchkinId</code> in 3E Config matches your Marketo instance ID (found in Marketo admin settings)
+- <strong>Check Network Tab</strong>: Open browser DevTools → Network tab → Reload page → Look for requests to Marketo (should see munchkin.js loading)
+- <strong>Check Timing</strong>: Sometimes Munchkin loads slowly - wait a few seconds and check again</p>
+<p><strong>Issue:</strong> Visit events not sending<br />
+<strong>Solution:</strong>
+- <strong>Check Munchkin</strong>: Verify Munchkin is loaded (type <code>window.Munchkin</code> in console - should not be undefined)
+- <strong>Check Interval</strong>: Verify the interval setting in 3E Config (default is 30 seconds, so you need to wait at least 30 seconds)
+- <strong>Check Page Active</strong>: Make sure the browser tab is active (not in background) - most browsers pause scripts in background tabs
+- <strong>Check Debug Mode</strong>: Enable debug mode and watch console for visit event messages
+- <strong>Check Marketo</strong>: Log into Marketo and check the activity log for the lead to see if visit events are being received</p>
+<hr />
+<h3 id="3e_form-validation">3E_Form Validation</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_Form Validation.html</code><br />
+<strong>Version:</strong> 7.3.1<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_3">What It Does</h4>
+<p>Adds extra validation to Marketo forms to prevent spam and ensure data quality. It can check for duplicate names, block default names like "first" and "last", validate .edu email addresses, block specific IP addresses, and add math question challenges.</p>
+<h4 id="how-it-works_3">How It Works</h4>
+<p>This script adds extra security checks to your forms to prevent spam and bad data. Here's how:</p>
+<ol>
+<li><strong>Wait for Forms</strong>: The script waits for Marketo's form system to load</li>
+<li><strong>Find Forms</strong>: It looks for all Marketo forms on the page</li>
+<li><strong>Skip Hidden Forms</strong>: It ignores hidden forms used by chatbots (those are handled separately)</li>
+<li><strong>Add Security Checks</strong>: Based on your settings, it adds these checks:</li>
+<li><strong>Name Check</strong>: Makes sure first name and last name are different (prevents "John John")</li>
+<li><strong>Default Name Block</strong>: Blocks common test names like "first", "last", "test"</li>
+<li><strong>Email Check</strong>: Can require .edu email addresses only (for student forms)</li>
+<li><strong>IP Blocking</strong>: Can block specific IP addresses (for known spammers)</li>
+<li><strong>Math Question</strong>: Can add a simple math question (like "What is 2 + 3?") to prove the user is human</li>
+<li><strong>Show Errors</strong>: If any check fails, it shows an error message to the user</li>
+<li><strong>Block Submission</strong>: The form won't submit until all checks pass</li>
+</ol>
+<p><strong>Why This Matters:</strong> This prevents spam submissions, fake data, and ensures you only get legitimate form submissions from real people.</p>
+<h4 id="validation-process_3">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with Marketo form</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Form Validation] v7.3.1</code></li>
+<li>
+<p>Verify "Form Validation Script Initialized" message</p>
+</li>
+<li>
+<p><strong>Test Name Validation (if enabled):</strong></p>
+</li>
+<li>Set first name and last name to the same value</li>
+<li>Try to submit form</li>
+<li>Verify error message: "First Name and Last Name cannot be the same"</li>
+<li>
+<p>Form should not submit</p>
+</li>
+<li>
+<p><strong>Test Default Name Prevention (if enabled):</strong></p>
+</li>
+<li>Enter "first" in first name field</li>
+<li>Try to submit form</li>
+<li>Verify error message about containing "first"</li>
+<li>
+<p>Form should not submit</p>
+</li>
+<li>
+<p><strong>Test EDU Email Validation (if enabled):</strong></p>
+</li>
+<li>Enter non-.edu email address</li>
+<li>Try to submit form</li>
+<li>Verify error message: "Email must be a .edu address"</li>
+<li>
+<p>Form should not submit</p>
+</li>
+<li>
+<p><strong>Test Math Question (if enabled):</strong></p>
+</li>
+<li>Verify math question field appears on form</li>
+<li>Select wrong answer</li>
+<li>Try to submit form</li>
+<li>Verify error message about math question</li>
+<li>Select correct answer</li>
+<li>Form should submit successfully</li>
+</ol>
+<h4 id="troubleshooting_3">Troubleshooting</h4>
+<p><strong>Issue:</strong> Validation not running<br />
+<strong>Solution:</strong>
+- <strong>Check Marketo Forms2</strong>: Open console and type <code>window.MktoForms2</code> - if undefined, Forms2 isn't loaded
+- <strong>Check Console Messages</strong>: Enable debug mode and look for form detection messages when page loads
+- <strong>Check Form Type</strong>: Verify the form is not a hidden conversion form (those are intentionally skipped by this script)
+- <strong>Check Form Loaded</strong>: Make sure the Marketo form has actually loaded on the page (you should see it visually)
+- <strong>Check Timing</strong>: Sometimes forms load slowly - wait a few seconds and check console again</p>
+<p><strong>Issue:</strong> Math question not appearing<br />
+<strong>Solution:</strong>
+- <strong>Check Setting</strong>: Verify <code>formMathValidation: 'true'</code> is set in 3E Config (must be the string 'true', not a boolean)
+- <strong>Check Console</strong>: Enable debug mode and look for math question creation messages
+- <strong>Check Form Space</strong>: Verify the form has room for an additional field (some forms are too compact)
+- <strong>Check Form Type</strong>: Make sure this is a visible form (not a hidden conversion form)
+- <strong>Check Form Loaded</strong>: Ensure the Marketo form has fully loaded before the validation script runs</p>
+<p><strong>Issue:</strong> Validation blocking legitimate submissions<br />
+<strong>Solution:</strong>
+- <strong>Check Settings</strong>: Review all validation toggles in 3E Config - you may have enabled a validation that's too strict
+- <strong>Check IP Blocking</strong>: If IP blocking is enabled, verify your IP blocking list doesn't include legitimate IP addresses
+- <strong>Test Different Inputs</strong>: Try submitting with different email addresses and names to see which validation is blocking
+- <strong>Check Error Messages</strong>: Read the error message shown to the user - it will tell you which validation failed
+- <strong>Disable Temporarily</strong>: If needed, temporarily disable specific validations in 3E Config to test which one is causing the issue</p>
+<hr />
+<h3 id="3e_rfi-submit">3E_RFI Submit</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_RFI Submit.html</code><br />
+<strong>Version:</strong> 1.4.5<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config, Marketo Forms2</p>
+<h4 id="what-it-does_4">What It Does</h4>
+<p>Handles form submissions from Marketo forms and 123FormBuilder forms. When a form is submitted successfully, it pushes an <code>rfi_submission</code> event to the dataLayer, which can trigger other tags or tracking. It also manages redirects to thank you pages.</p>
+<p><strong>Important:</strong> This tag skips hidden conversion forms (chatbot blind forms) to prevent duplicate events. Hidden forms are handled by the 3E_3EI Recruiter Conversion script.</p>
+<h4 id="how-it-works_4">How It Works</h4>
+<p><strong>For Marketo Forms:</strong>
+1. <strong>Wait for Forms</strong>: Script waits for Marketo's form system to load
+2. <strong>Find Forms</strong>: It looks for Marketo forms on the page
+3. <strong>Check Form Type</strong>: It checks if the form is a hidden chatbot form (if yes, it skips it - those are handled by a different script)
+4. <strong>Listen for Submission</strong>: It watches for when someone successfully submits the form
+5. <strong>When Form Submits</strong>:
+   - Sends an <code>rfi_submission</code> event to the dataLayer (so other tools know a form was submitted)
+   - Handles the redirect to the thank you page
+   - Prevents Marketo's default redirect (so we can control where they go)</p>
+<p><strong>For 123FormBuilder Forms:</strong>
+1. <strong>Find Forms</strong>: Script looks for 123FormBuilder forms (they have IDs starting with <code>cf_</code>)
+2. <strong>Watch for Success</strong>: It listens for signals that the form was submitted successfully
+3. <strong>Multiple Detection Methods</strong>: It uses several ways to detect submission:
+   - Watches for success messages from the form
+   - Monitors iframe changes (123FormBuilder uses iframes)
+   - Listens for special messages (postMessage) from the form
+4. <strong>When Form Submits</strong>:
+   - Detects the submission through one of these methods
+   - Sends an <code>rfi_submission</code> event to the dataLayer</p>
+<p><strong>Why This Matters:</strong> This ensures that every form submission is properly tracked and recorded, regardless of which form system you're using.</p>
+<h4 id="validation-process_4">Validation Process</h4>
+<p><strong>Scenario 1: Visible Marketo Form Submission</strong></p>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with Marketo form</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_RFI Submit] v1.4.5</code></li>
+<li>
+<p>Verify "Marketo form detected and ready" message</p>
+</li>
+<li>
+<p><strong>Submit Form:</strong></p>
+</li>
+<li>Fill out Marketo form completely</li>
+<li>Submit form</li>
+<li>
+<p>Check console for: <code>[3E_RFI Submit] Pushed rfi_submission event to dataLayer</code></p>
+</li>
+<li>
+<p><strong>Verify dataLayer Event:</strong></p>
+</li>
+<li>Open browser console (press F12, click "Console" tab)</li>
+<li>Type: <code>dataLayer</code> and press Enter</li>
+<li>You'll see an array of events</li>
+<li>Scroll through the array and look for an object that contains: <code>{event: 'rfi_submission'}</code></li>
+<li>If you find it, the event was successfully pushed</li>
+<li>
+<p><strong>Tip:</strong> You can also type <code>dataLayer.filter(e =&gt; e.event === 'rfi_submission')</code> to find just the rfi_submission events</p>
+</li>
+<li>
+<p><strong>Verify Redirect:</strong></p>
+</li>
+<li>Check that page redirects to thank you page</li>
+<li>Verify redirect happens correctly</li>
+</ol>
+<p><strong>Scenario 2: 123FormBuilder Form Submission</strong></p>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>Add <code>?3e_rfi_debug=true</code> to URL for enhanced logging</li>
+<li>
+<p>Reload page with 123FormBuilder form</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_RFI Submit] v1.4.5</code></li>
+<li>
+<p>Verify "Found X potential 123FormBuilder form(s)" message</p>
+</li>
+<li>
+<p><strong>Submit Form:</strong></p>
+</li>
+<li>Fill out 123FormBuilder form completely</li>
+<li>Submit form</li>
+<li>Check console for scrollToTop postMessage detection or URL change detection</li>
+<li>
+<p>Look for: <code>[3E_RFI Submit] Received scrollToTop postMessage</code> or <code>[3E_RFI Submit] Thank you page pattern detected</code></p>
+</li>
+<li>
+<p><strong>Verify dataLayer Event:</strong></p>
+</li>
+<li>Open browser console (press F12, click "Console" tab)</li>
+<li>Type: <code>dataLayer</code> and press Enter</li>
+<li>You'll see an array of events</li>
+<li>Scroll through the array and look for an object that contains: <code>{event: 'rfi_submission'}</code></li>
+<li>If you find it, the event was successfully pushed</li>
+<li><strong>Tip:</strong> You can also type <code>dataLayer.filter(e =&gt; e.event === 'rfi_submission')</code> to find just the rfi_submission events</li>
+</ol>
+<p><strong>Scenario 3: Chatbot Blind Form Submission (Should Be Skipped)</strong></p>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with chatbot</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_RFI Submit] v1.4.5</code></li>
+<li>
+<p>Verify "Marketo form detected and ready" message</p>
+</li>
+<li>
+<p><strong>Submit Chatbot Blind Form:</strong></p>
+</li>
+<li>Interact with chatbot</li>
+<li>Submit blind form through chatbot</li>
+<li>Check console for: <code>[3E_RFI Submit] Skipping hidden conversion form - handled by chatbot conversion script</code></li>
+<li>
+<p>Verify 3E_RFI Submit does NOT push rfi_submission event</p>
+</li>
+<li>
+<p><strong>Verify Only One Event:</strong></p>
+</li>
+<li>Check dataLayer for rfi_submission events</li>
+<li>Should see only ONE event (from 3E_3EI Recruiter Conversion script)</li>
+<li>Should NOT see duplicate events</li>
+</ol>
+<h4 id="troubleshooting_4">Troubleshooting</h4>
+<p><strong>Issue:</strong> Marketo form submission not triggering event<br />
+<strong>Solution:</strong>
+- <strong>Check Forms2</strong>: Verify Marketo Forms2 is loaded (type <code>window.MktoForms2</code> in console)
+- <strong>Check Console</strong>: Enable debug mode and look for form detection messages
+- <strong>Check Form Type</strong>: Verify the form is not a hidden conversion form (those are handled by a different script)
+- <strong>Check for Conflicts</strong>: Look for hardcoded RFI submit scripts on the page that might be interfering (check page source)
+- <strong>Check Form Submission</strong>: Make sure the form actually submits successfully (you should see a success message or redirect)
+- <strong>Check dataLayer</strong>: After submission, check dataLayer for the <code>rfi_submission</code> event</p>
+<p><strong>Issue:</strong> 123FormBuilder form not detected<br />
+<strong>Solution:</strong>
+- <strong>Check Form ID</strong>: Verify the form has an ID that starts with <code>cf_</code> (inspect the form element to see its ID)
+- <strong>Check Console</strong>: Enable debug mode and look for form detection messages (should say "Found X potential 123FormBuilder form(s)")
+- <strong>Check Timing</strong>: Verify the form is loaded before the script runs (forms in iframes sometimes load slowly)
+- <strong>Enhanced Debugging</strong>: Add <code>?3e_rfi_debug=true</code> to the URL for extra detailed logging
+- <strong>Check Form Type</strong>: Make sure it's actually a 123FormBuilder form (not a Marketo form or other form type)
+- <strong>Check iframe</strong>: 123FormBuilder forms often use iframes - make sure the iframe is loaded and accessible</p>
+<p><strong>Issue:</strong> Duplicate rfi_submission events<br />
+<strong>Solution:</strong>
+- <strong>Check Console Logs</strong>: Enable debug mode and look for messages saying "Skipping hidden conversion form" - this confirms hidden forms are being skipped
+- <strong>Check Script Assignment</strong>: Verify that 3E_3EI Recruiter Conversion script is handling blind/hidden forms, and 3E_RFI Submit is handling visible forms
+- <strong>Check for Multiple Scripts</strong>: Make sure you don't have multiple versions of the same script deployed
+- <strong>Check dataLayer</strong>: After submission, check dataLayer - you should see only ONE <code>rfi_submission</code> event
+- <strong>Check Form Type</strong>: Verify hidden forms have the correct data attributes (<code>data-mkto-form-purpose="hidden-conversion"</code>)</p>
+<p><strong>Issue:</strong> Event not appearing in dataLayer<br />
+<strong>Solution:</strong>
+- <strong>Check dataLayer Exists</strong>: Open console and type <code>window.dataLayer</code> - it should show an array (if undefined, dataLayer doesn't exist)
+- <strong>Initialize dataLayer</strong>: If dataLayer doesn't exist, add this to your page: <code>window.dataLayer = window.dataLayer || []</code>
+- <strong>Check Console</strong>: Enable debug mode and look for "Pushed [event name] event to dataLayer" messages
+- <strong>Check for Errors</strong>: Look for any JavaScript errors in console that might be preventing the script from running
+- <strong>Check GTM Preview</strong>: Use GTM Preview mode to see if events are being detected by GTM
+- <strong>Check Timing</strong>: Sometimes events are pushed before you check - reload page and check dataLayer immediately after the action</p>
+<hr />
+<h3 id="3e_favicon-injection">3E_Favicon Injection</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_Favicon Injection.html</code><br />
+<strong>Version:</strong> 1.2.1<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_5">What It Does</h4>
+<p>Dynamically changes the website's favicon (the small icon in the browser tab) based on settings in 3E Config. If no favicon URL is configured, it preserves the existing favicon.</p>
+<h4 id="how-it-works_5">How It Works</h4>
+<p>A favicon is the small icon that appears in the browser tab next to your website's name. This script can change it to a custom icon:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Check Page Type</strong>: It checks if this is a Marketo landing page or a 3enrollment domain (only runs on these pages)</li>
+<li><strong>Check Configuration</strong>: It looks to see if you've provided a favicon URL in 3E Config</li>
+<li><strong>If Favicon URL Provided</strong>:</li>
+<li>Removes any existing favicon links from the page</li>
+<li>Creates new favicon links pointing to your custom icon</li>
+<li>Adds these links to the page's <code>&lt;head&gt;</code> section (where browsers look for favicons)</li>
+<li><strong>If No Favicon URL</strong>:</li>
+<li>Does nothing - leaves the existing favicon alone (won't break anything)</li>
+</ol>
+<p><strong>Why This Matters:</strong> Custom favicons help with branding - your website tab will show your logo instead of a generic icon.</p>
+<h4 id="validation-process_5">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Favicon Injection] v1.2.1</code></li>
+<li>
+<p>Verify "3E Favicon Injection Script Initialized" message</p>
+</li>
+<li>
+<p><strong>Test With Favicon URL Configured:</strong></p>
+</li>
+<li>Set <code>faviconUrl</code> in 3E Config to a valid image URL</li>
+<li>Reload page</li>
+<li>Check browser tab for new favicon</li>
+<li>Check console for: <code>[3E Favicon Injection] Favicon injected: [URL]</code></li>
+<li>
+<p>Inspect page source: Look for <code>&lt;link rel="icon"&gt;</code> tags in <code>&lt;head&gt;</code></p>
+</li>
+<li>
+<p><strong>Test Without Favicon URL:</strong></p>
+</li>
+<li>Remove or empty <code>faviconUrl</code> in 3E Config</li>
+<li>Reload page</li>
+<li>Check console for: <code>[3E Favicon Injection] No favicon URL provided - preserving existing favicons</code></li>
+<li>Verify existing favicon remains unchanged</li>
+</ol>
+<h4 id="troubleshooting_5">Troubleshooting</h4>
+<p><strong>Issue:</strong> Favicon not changing<br />
+<strong>Solution:</strong>
+- Verify <code>faviconUrl</code> is set in 3E Config
+- Check that URL is accessible (not broken)
+- Verify page targeting (must be Marketo landing page or 3enrollment domain)
+- Check console for injection messages</p>
+<p><strong>Issue:</strong> Favicon removed when not configured<br />
+<strong>Solution:</strong>
+- Verify script version is 1.2.1 or later (preserves existing favicons)
+- Check that <code>faviconUrl</code> is empty/not set in 3E Config
+- Verify console shows "preserving existing favicons" message</p>
+<p><strong>Issue:</strong> Favicon not showing<br />
+<strong>Solution:</strong>
+- Verify favicon URL is valid and accessible
+- Check image format (should be .ico, .png, or .svg)
+- Clear browser cache and reload
+- Check browser tab (some browsers cache favicons aggressively)</p>
+<hr />
+<h3 id="3e_sticky-buttons">3E_Sticky Buttons</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_Sticky Buttons.html</code><br />
+<strong>Version:</strong> 1.2.4<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_6">What It Does</h4>
+<p>Creates sticky (always visible) buttons on mobile devices that stay at the bottom of the screen when scrolling. These buttons typically include "Apply Now" and "Request Info" CTAs. On mobile, the buttons stick to the bottom of the viewport. The script also creates a container for the chatbot iframe to be placed in.</p>
+<h4 id="how-it-works_6">How It Works</h4>
+<p>On mobile devices, this script makes important buttons (like "Apply Now" and "Request Info") stick to the bottom of the screen so they're always visible:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Check Page Type</strong>: It checks if this is a Marketo landing page or 3enrollment domain (only runs on these)</li>
+<li><strong>Detect Mobile</strong>: It checks if the screen is mobile-sized (less than 576 pixels wide)</li>
+<li><strong>Find Buttons</strong>: It looks for the header element that contains your buttons (looks for class <code>.hdr_right_v2</code>)</li>
+<li><strong>Make Sticky</strong>: On mobile only, it makes the header stick to the bottom of the screen</li>
+<li><strong>Add Chatbot Space</strong>: It creates a special container in the sticky header where the chatbot can be placed</li>
+<li><strong>Style Buttons</strong>: It adjusts spacing and styling so everything looks good together</li>
+</ol>
+<p><strong>Why This Matters:</strong> On mobile, users often scroll past important buttons. Making them sticky ensures "Apply Now" and "Request Info" are always visible, which increases conversions.</p>
+<h4 id="validation-process_6">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Sticky Buttons] v1.2.4</code></li>
+<li>
+<p>Verify "3E Sticky Buttons Script Initialized" message</p>
+</li>
+<li>
+<p><strong>Test on Mobile Viewport:</strong></p>
+</li>
+<li>Resize browser to mobile width (&lt; 576px) or use device emulation</li>
+<li>Scroll page down</li>
+<li>Verify buttons stick to bottom of screen</li>
+<li>
+<p>Check console for sticky button detection messages</p>
+</li>
+<li>
+<p><strong>Test on Desktop:</strong></p>
+</li>
+<li>Resize browser to desktop width (&gt; 576px)</li>
+<li>Verify buttons do NOT stick (normal positioning)</li>
+<li>
+<p>Check console for appropriate messages</p>
+</li>
+<li>
+<p><strong>Verify Chatbot Container:</strong></p>
+</li>
+<li>On mobile viewport, inspect page</li>
+<li>Look for element with ID <code>chatbot-iframe-container</code></li>
+<li>Verify container is created in sticky header</li>
+<li>Check console for container creation messages</li>
+</ol>
+<h4 id="troubleshooting_6">Troubleshooting</h4>
+<p><strong>Issue:</strong> Buttons not sticking on mobile<br />
+<strong>Solution:</strong>
+- Verify viewport width is &lt; 576px
+- Check that header element exists (<code>.hdr_right_v2</code>)
+- Verify page targeting (must be Marketo landing page or 3enrollment domain)
+- Check console for sticky button detection messages</p>
+<p><strong>Issue:</strong> Buttons sticking on desktop<br />
+<strong>Solution:</strong>
+- Verify viewport width is &gt; 576px
+- Check that sticky positioning is only applied on mobile
+- Verify breakpoint logic in script</p>
+<p><strong>Issue:</strong> Chatbot container not created<br />
+<strong>Solution:</strong>
+- Verify mobile viewport (&lt; 576px)
+- Check that sticky header element exists
+- Verify script version is 1.2.4 or later
+- Check console for container creation messages</p>
+<hr />
+<h3 id="3e_cloudflare-beacon">3E_Cloudflare Beacon</h3>
+<p><strong>File Location:</strong> <code>tags/base-solutions/3E_Cloudflare Beacon.html</code><br />
+<strong>Version:</strong> 1.2.0<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_7">What It Does</h4>
+<p>Integrates Cloudflare Web Analytics tracking on the website. This provides website analytics data through Cloudflare's analytics platform.</p>
+<h4 id="how-it-works_7">How It Works</h4>
+<p>This script adds Cloudflare Web Analytics tracking to your website:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Check Token</strong>: It checks if you've provided a Cloudflare token in 3E Config</li>
+<li><strong>If Token Provided</strong>:</li>
+<li>Loads Cloudflare's analytics tracking script</li>
+<li>Starts tracking with your token</li>
+<li>Begins collecting website analytics data</li>
+<li><strong>If No Token</strong>:</li>
+<li>Script does nothing (skips initialization)</li>
+<li>No tracking occurs</li>
+</ol>
+<p><strong>Why This Matters:</strong> Cloudflare Web Analytics provides website traffic data and insights about how people use your site, similar to Google Analytics but with privacy-focused tracking.</p>
+<h4 id="validation-process_7">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Cloudflare Beacon] v1.2.0</code></li>
+<li>
+<p>Verify script initialization message</p>
+</li>
+<li>
+<p><strong>Test With Token Configured:</strong></p>
+</li>
+<li>Set <code>cloudflareToken</code> in 3E Config</li>
+<li>Reload page</li>
+<li>Check console for Cloudflare script loading messages</li>
+<li>Verify Cloudflare analytics script is loaded (inspect Network tab)</li>
+<li>
+<p>Check Cloudflare dashboard for tracking data</p>
+</li>
+<li>
+<p><strong>Test Without Token:</strong></p>
+</li>
+<li>Remove or empty <code>cloudflareToken</code> in 3E Config</li>
+<li>Reload page</li>
+<li>Verify script skips initialization</li>
+<li>Check console for appropriate messages</li>
+</ol>
+<h4 id="troubleshooting_7">Troubleshooting</h4>
+<p><strong>Issue:</strong> Cloudflare tracking not working<br />
+<strong>Solution:</strong>
+- Verify <code>cloudflareToken</code> is set in 3E Config
+- Check that token is valid and active
+- Verify Cloudflare script is loading (check Network tab)
+- Check Cloudflare dashboard for data</p>
+<p><strong>Issue:</strong> Script not loading<br />
+<strong>Solution:</strong>
+- Verify 3E Config is loaded
+- Check console for initialization messages
+- Verify no JavaScript errors</p>
+<hr />
+<h2 id="chatbot-solutions">Chatbot Solutions</h2>
+<p>Chatbot solutions provide integration and tracking for chatbot/recruiter functionality. Deploy these when implementing chatbot solutions.</p>
+<hr />
+<h3 id="3e_3ei-recruiter-activity">3E_3EI Recruiter Activity</h3>
+<p><strong>File Location:</strong> <code>tags/chatbot-solutions/3E_3EI Recruiter Activity.html</code><br />
+<strong>Version:</strong> 1.1.9<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_8">What It Does</h4>
+<p>Listens for activity signals from the chatbot iframe and pushes events to the dataLayer. This tracks when users interact with the chatbot (open, respond, click links, close, etc.).</p>
+<h4 id="how-it-works_8">How It Works</h4>
+<p>This script listens to what's happening in the chatbot and records those events:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Set Up Listener</strong>: It creates a listener that watches for messages from the chatbot iframe (the chatbot runs in a separate frame for security)</li>
+<li><strong>Security Check</strong>: When it receives a message, it checks where it came from (security check to prevent malicious messages)</li>
+<li><strong>Record Events</strong>: When the chatbot does something, it sends a message, and this script records it:</li>
+<li><code>bot_initiated</code> - User opened the chatbot</li>
+<li><code>bot_response</code> - User sent a message</li>
+<li><code>bot_click_link</code> - User clicked a link in the chatbot</li>
+<li><code>bot_click_app_link</code> - User clicked an application link</li>
+<li><code>bot_engagement</code> - User is actively engaging</li>
+<li><code>bot_closed</code> - User closed the chatbot</li>
+<li><code>bot_email_captured</code> - User provided their email</li>
+<li><strong>Send to dataLayer</strong>: Each event is sent to the dataLayer so other tools can use it</li>
+</ol>
+<p><strong>Why This Matters:</strong> This tracking helps you understand how people interact with your chatbot - what they ask, what links they click, and whether they provide contact information.</p>
+<h4 id="validation-process_8">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with chatbot</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_3EI Recruiter Activity] v1.1.9</code></li>
+<li>
+<p>Verify script initialization message</p>
+</li>
+<li>
+<p><strong>Test Bot Initiated:</strong></p>
+</li>
+<li>Open chatbot</li>
+<li>Check console for: <code>[3E_3EI Recruiter Activity] bot_initiated event received</code></li>
+<li>
+<p>Verify dataLayer event: <code>{event: 'bot_initiated'}</code></p>
+</li>
+<li>
+<p><strong>Test Bot Response:</strong></p>
+</li>
+<li>Send a message in chatbot</li>
+<li>Check console for bot_response events</li>
+<li>
+<p>Verify dataLayer events</p>
+</li>
+<li>
+<p><strong>Test Bot Closed:</strong></p>
+</li>
+<li>Close chatbot</li>
+<li>Check console for: <code>[3E_3EI Recruiter Activity] bot_closed event received</code></li>
+<li>Verify dataLayer event: <code>{event: 'bot_closed'}</code></li>
+</ol>
+<h4 id="troubleshooting_8">Troubleshooting</h4>
+<p><strong>Issue:</strong> No activity events firing<br />
+<strong>Solution:</strong>
+- Verify chatbot iframe is loaded
+- Check that chatbot is sending postMessage events
+- Verify origin validation (check console for rejected messages)
+- Check console for postMessage listener setup messages</p>
+<p><strong>Issue:</strong> Events not appearing in dataLayer<br />
+<strong>Solution:</strong>
+- Verify dataLayer exists
+- Check console for event push confirmations
+- Verify no JavaScript errors</p>
+<hr />
+<h3 id="3e_3ei-recruiter-conversion">3E_3EI Recruiter Conversion</h3>
+<p><strong>File Location:</strong> <code>tags/chatbot-solutions/3E_3EI Recruiter Conversion.html</code><br />
+<strong>Version:</strong> 2.2.4<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config, Marketo Forms2</p>
+<h4 id="what-it-does_9">What It Does</h4>
+<p>Handles chatbot conversion form submissions. When a user submits information through the chatbot (blind form), this script submits the data to Marketo and pushes an <code>rfi_submission</code> event to the dataLayer. This is the ONLY script that should handle hidden conversion forms.</p>
+<h4 id="how-it-works_9">How It Works</h4>
+<p>This script handles form submissions that happen inside the chatbot (called "blind forms" or "hidden conversion forms"):</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Wait for Forms</strong>: It waits for Marketo's form system to load</li>
+<li><strong>Find Hidden Forms</strong>: It looks for hidden forms that are used by the chatbot (these forms are invisible to users but collect their information)</li>
+<li><strong>Set Up Handler</strong>: It prepares to handle when someone submits the form through the chatbot</li>
+<li><strong>When Form Submits</strong>:</li>
+<li>Sends the form data to Marketo (saves the lead information)</li>
+<li>Sends an <code>rfi_submission</code> event to the dataLayer (so other tools know a form was submitted)</li>
+<li>Keeps the user on the same page (doesn't redirect them away)</li>
+</ol>
+<p><strong>Important:</strong> This is the ONLY script that should handle hidden chatbot forms. The regular 3E_RFI Submit script is told to skip these forms to prevent duplicate submissions.</p>
+<p><strong>Why This Matters:</strong> When users interact with the chatbot and provide their information, this ensures that data is properly saved to Marketo and tracked, without disrupting the user's chatbot experience.</p>
+<h4 id="validation-process_9">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with chatbot</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_3EI Recruiter Conversion] v2.2.4</code></li>
+<li>
+<p>Verify script initialization message</p>
+</li>
+<li>
+<p><strong>Test Hidden Form Detection:</strong></p>
+</li>
+<li>Interact with chatbot to trigger blind form</li>
+<li>Check console for hidden form detection messages</li>
+<li>
+<p>Verify form is marked with data attributes</p>
+</li>
+<li>
+<p><strong>Test Form Submission:</strong></p>
+</li>
+<li>Fill out blind form through chatbot</li>
+<li>Submit form</li>
+<li>Check console for: <code>[3E_3EI Recruiter Conversion] Form submitted successfully</code></li>
+<li>Verify dataLayer event: <code>{event: 'rfi_submission'}</code></li>
+<li>
+<p>Verify only ONE rfi_submission event (not duplicate from 3E_RFI Submit)</p>
+</li>
+<li>
+<p><strong>Verify Marketo Submission:</strong></p>
+</li>
+<li>Check Marketo activity log for form submission</li>
+<li>Verify data was submitted correctly</li>
+</ol>
+<h4 id="troubleshooting_9">Troubleshooting</h4>
+<p><strong>Issue:</strong> Hidden form not detected<br />
+<strong>Solution:</strong>
+- Verify form has data attributes: <code>data-mkto-form-purpose="hidden-conversion"</code> or <code>data-mkto-form-type="hidden-conversion"</code>
+- Check that form is in container with ID <code>mkto-hidden-form-conversion</code>
+- Check console for form detection messages</p>
+<p><strong>Issue:</strong> Duplicate rfi_submission events<br />
+<strong>Solution:</strong>
+- Verify 3E_RFI Submit is skipping hidden forms (check console logs)
+- Check that only 3E_3EI Recruiter Conversion handles hidden forms
+- Verify form is properly marked as hidden conversion form</p>
+<p><strong>Issue:</strong> Form not submitting to Marketo<br />
+<strong>Solution:</strong>
+- Verify Marketo Forms2 is loaded
+- Check Marketo form ID in 3E Config matches form
+- Check console for submission errors
+- Verify Marketo API permissions</p>
+<hr />
+<h3 id="3e_3ei-recruiter-tracking">3E_3EI Recruiter Tracking</h3>
+<p><strong>File Location:</strong> <code>tags/chatbot-solutions/3E_3EI Recruiter Tracking.html</code><br />
+<strong>Version:</strong> 2.1.4<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config, Marketo Munchkin</p>
+<h4 id="what-it-does_10">What It Does</h4>
+<p>Sends chatbot events to Marketo via Munchkin tracking. When chatbot events occur (initiated, closed, etc.), this script sends tracking data to Marketo to record the activity.</p>
+<h4 id="how-it-works_10">How It Works</h4>
+<p>This script takes chatbot activity events and sends them to Marketo for tracking:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Wait for Marketo</strong>: It waits for Marketo's tracking system (Munchkin) to be ready</li>
+<li><strong>Watch for Events</strong>: It watches the dataLayer for chatbot events (like when someone opens the chatbot, sends a message, or closes it)</li>
+<li><strong>When Events Happen</strong>:</li>
+<li>Captures the event information (what happened, when, etc.)</li>
+<li>Sends this data to Marketo using Munchkin</li>
+<li>Records the activity in Marketo's system (so you can see chatbot interactions in Marketo)</li>
+</ol>
+<p><strong>Why This Matters:</strong> This connects chatbot activity to your Marketo lead records, so you can see in Marketo when someone interacted with your chatbot, what they asked about, and whether they provided contact information.</p>
+<h4 id="validation-process_10">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with chatbot</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_3EI Recruiter Tracking] v2.1.4</code></li>
+<li>
+<p>Verify script initialization message</p>
+</li>
+<li>
+<p><strong>Test Bot Initiated Tracking:</strong></p>
+</li>
+<li>Open chatbot</li>
+<li>Check console for tracking messages</li>
+<li>
+<p>Verify Marketo receives tracking data (check Marketo activity log)</p>
+</li>
+<li>
+<p><strong>Test Bot Closed Tracking:</strong></p>
+</li>
+<li>Close chatbot</li>
+<li>Check console for tracking messages</li>
+<li>Verify Marketo receives tracking data</li>
+</ol>
+<h4 id="troubleshooting_10">Troubleshooting</h4>
+<p><strong>Issue:</strong> Tracking not sending to Marketo<br />
+<strong>Solution:</strong>
+- Verify Marketo Munchkin is loaded
+- Check Munchkin ID in 3E Config matches Marketo instance
+- Verify chatbot events are firing (check dataLayer)
+- Check console for tracking errors</p>
+<p><strong>Issue:</strong> Events not appearing in Marketo<br />
+<strong>Solution:</strong>
+- Verify Munchkin is initialized correctly
+- Check Marketo activity log for tracking data
+- Verify event data is being sent
+- Check for JavaScript errors</p>
+<hr />
+<h3 id="3e_3ei-recruiter-unified">3E_3EI Recruiter Unified</h3>
+<p><strong>File Location:</strong> <code>tags/chatbot-solutions/3E_3EI Recruiter Unified.html</code><br />
+<strong>Version:</strong> 1.4.4<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_11">What It Does</h4>
+<p>Loads the chatbot iframe on the page. It can load either a development or production chatbot based on 3E Config settings. The chatbot appears as a floating widget, and on mobile it can be integrated into the sticky button bar.</p>
+<h4 id="how-it-works_11">How It Works</h4>
+<p>This script loads and displays the chatbot on your website:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Check Settings</strong>: It checks the chatbot environment setting in 3E Config:</li>
+<li><code>disabled</code> - Chatbot won't appear</li>
+<li><code>dev</code> - Development chatbot (for testing)</li>
+<li><code>prod</code> - Production chatbot (live version)</li>
+<li><strong>If Disabled</strong>: Script stops and does nothing</li>
+<li><strong>If Dev or Prod</strong>:</li>
+<li>Gets the chatbot ID from 3E Config (which chatbot to load)</li>
+<li>Creates an iframe (a window that displays the chatbot)</li>
+<li>Sets the iframe to load the chatbot from the correct URL</li>
+<li>Places the iframe:<ul>
+<li>On mobile: Inside the sticky button bar (if available)</li>
+<li>On desktop: In a fixed position (usually bottom-right corner)</li>
+</ul>
+</li>
+<li>Sets up communication with the chatbot (so they can send messages back and forth)</li>
+<li>Handles expanding/collapsing the chatbot when users open or close it</li>
+</ol>
+<p><strong>Why This Matters:</strong> This is what actually puts the chatbot on your website. Without this script, the chatbot won't appear, even if all the other chatbot scripts are deployed.</p>
+<h4 id="validation-process_11">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>Set <code>chatBotEnvironment: 'prod'</code> or <code>'dev'</code> in 3E Config</li>
+<li>Set <code>chatBotProdId</code> or <code>chatBotDevId</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_ChatBot Unified] v1.4.4</code></li>
+<li>
+<p>Verify chatbot environment and bot ID</p>
+</li>
+<li>
+<p><strong>Test Desktop Chatbot:</strong></p>
+</li>
+<li>Verify chatbot iframe appears (usually bottom-right)</li>
+<li>Check that iframe loads chatbot content</li>
+<li>Click chatbot to open</li>
+<li>Verify chatbot expands to full screen</li>
+<li>Close chatbot</li>
+<li>
+<p>Verify chatbot collapses</p>
+</li>
+<li>
+<p><strong>Test Mobile Chatbot:</strong></p>
+</li>
+<li>Resize to mobile viewport (&lt; 576px)</li>
+<li>Verify chatbot appears in sticky button bar</li>
+<li>Check that chatbot container is created</li>
+<li>Click chatbot</li>
+<li>Verify chatbot expands to full screen</li>
+<li>Close chatbot</li>
+<li>
+<p>Verify chatbot collapses to compact view</p>
+</li>
+<li>
+<p><strong>Test Environment Control:</strong></p>
+</li>
+<li>Set <code>chatBotEnvironment: 'disabled'</code> in 3E Config</li>
+<li>Reload page</li>
+<li>Verify chatbot does NOT appear</li>
+<li>Check console for disabled message</li>
+</ol>
+<h4 id="troubleshooting_11">Troubleshooting</h4>
+<p><strong>Issue:</strong> Chatbot not appearing<br />
+<strong>Solution:</strong>
+- Verify <code>chatBotEnvironment</code> is set to 'dev' or 'prod' (not 'disabled')
+- Check that <code>chatBotProdId</code> or <code>chatBotDevId</code> is set in 3E Config
+- Verify bot ID is valid
+- Check console for initialization errors</p>
+<p><strong>Issue:</strong> Chatbot not expanding on mobile<br />
+<strong>Solution:</strong>
+- Verify sticky button container exists
+- Check that 3E_Sticky Buttons script is deployed
+- Verify chatbot container is created
+- Check console for expansion messages</p>
+<p><strong>Issue:</strong> Chatbot iframe not loading<br />
+<strong>Solution:</strong>
+- Verify chatbot URL is accessible
+- Check bot ID is correct
+- Verify iframe is created (inspect page)
+- Check console for iframe creation messages</p>
+<hr />
+<h3 id="3e_insights-pixel">3E_Insights Pixel</h3>
+<p><strong>File Location:</strong> <code>tags/chatbot-solutions/3E_Insights Pixel.html</code><br />
+<strong>Version:</strong> 1.0.7<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_12">What It Does</h4>
+<p>Loads Marketo Munchkin tracking script and Insights pixel for analytics. This ensures Marketo tracking is available even if Munchkin isn't loaded elsewhere on the page.</p>
+<h4 id="how-it-works_12">How It Works</h4>
+<p>This script ensures Marketo tracking is available on your page, even if it's not loaded elsewhere:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Check for Munchkin</strong>: It checks if Marketo's tracking script (Munchkin) is already loaded on the page</li>
+<li><strong>If Not Loaded</strong>:</li>
+<li>Loads the Munchkin script from Marketo's servers</li>
+<li>Starts tracking with your Munchkin ID from 3E Config</li>
+<li><strong>Load Insights Pixel</strong>: It also loads Marketo's Insights pixel (for additional analytics)</li>
+<li><strong>Make Available</strong>: This ensures Marketo tracking is ready for all other tags that need it</li>
+</ol>
+<p><strong>Why This Matters:</strong> Some websites don't have Marketo tracking loaded by default. This script ensures it's always available, so all your Marketo-related tags can work properly. It's like a safety net - if Munchkin isn't loaded elsewhere, this script loads it.</p>
+<h4 id="validation-process_12">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Insights Pixel] v1.0.7</code></li>
+<li>
+<p>Verify script initialization message</p>
+</li>
+<li>
+<p><strong>Test Munchkin Loading:</strong></p>
+</li>
+<li>Check Network tab for Munchkin script request</li>
+<li>Verify Munchkin script loads</li>
+<li>Check console for Munchkin initialization messages</li>
+<li>
+<p>Verify <code>window.Munchkin</code> object exists</p>
+</li>
+<li>
+<p><strong>Test Insights Pixel:</strong></p>
+</li>
+<li>Check Network tab for Insights pixel request</li>
+<li>Verify pixel loads correctly</li>
+</ol>
+<h4 id="troubleshooting_12">Troubleshooting</h4>
+<p><strong>Issue:</strong> Munchkin not loading<br />
+<strong>Solution:</strong>
+- Verify <code>munchkinId</code> is set in 3E Config
+- Check that Munchkin ID is valid
+- Verify Marketo instance URL is correct
+- Check console for loading errors</p>
+<p><strong>Issue:</strong> Duplicate Munchkin loading<br />
+<strong>Solution:</strong>
+- Check if Munchkin is loaded elsewhere on page
+- Verify script checks for existing Munchkin before loading
+- Check console for duplicate loading messages</p>
+<hr />
+<h2 id="pop-up-solutions">Pop-up Solutions</h2>
+<p>Pop-up solutions provide pop-up functionality and tracking. Deploy these when implementing pop-up solutions.</p>
+<hr />
+<h3 id="3e_pop-up">3E_Pop-up</h3>
+<p><strong>File Location:</strong> <code>tags/pop-up-solutions/3E_Pop-up.html</code><br />
+<strong>Version:</strong> 2.3.1<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config</p>
+<h4 id="what-it-does_13">What It Does</h4>
+<p>Injects a vendor pop-up snippet (like Pardot, OptinMonster, etc.) into the page. The pop-up code is stored in 3E Config, and this script injects it when enabled.</p>
+<h4 id="how-it-works_13">How It Works</h4>
+<p>This script adds a pop-up (like a pop-up form or offer) to your website:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Check if Enabled</strong>: It checks if pop-ups are enabled in 3E Config (<code>popupEnvironment: 'enabled'</code>)</li>
+<li><strong>Check for Code</strong>: It checks if you've provided pop-up code in 3E Config (<code>popupTag</code>)</li>
+<li><strong>If Enabled and Code Exists</strong>:</li>
+<li>Creates a container on the page</li>
+<li>Injects your pop-up code into the container</li>
+<li>Runs any scripts in the pop-up code (so the pop-up actually works)</li>
+<li>Marks it as injected (so it doesn't add the pop-up twice)</li>
+<li><strong>If Disabled or No Code</strong>:</li>
+<li>Script does nothing (no pop-up appears)</li>
+</ol>
+<p><strong>Why This Matters:</strong> This allows you to add vendor pop-ups (like Pardot, OptinMonster, etc.) to your website through GTM, without having to modify your website code directly.</p>
+<h4 id="validation-process_13">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>Set <code>popupEnvironment: 'enabled'</code> in 3E Config</li>
+<li>Set <code>popupTag</code> in 3E Config with pop-up snippet</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for: <code>[3E_Pop-up] v2.3.1</code></li>
+<li>
+<p>Verify script initialization message</p>
+</li>
+<li>
+<p><strong>Test Pop-up Injection:</strong></p>
+</li>
+<li>Verify pop-up appears on page</li>
+<li>Check console for injection messages</li>
+<li>Inspect page source: Look for pop-up markup</li>
+<li>
+<p>Verify pop-up functionality works</p>
+</li>
+<li>
+<p><strong>Test Disabled State:</strong></p>
+</li>
+<li>Set <code>popupEnvironment: 'disabled'</code> in 3E Config</li>
+<li>Reload page</li>
+<li>Verify pop-up does NOT appear</li>
+<li>Check console for disabled message</li>
+</ol>
+<h4 id="troubleshooting_13">Troubleshooting</h4>
+<p><strong>Issue:</strong> Pop-up not appearing<br />
+<strong>Solution:</strong>
+- Verify <code>popupEnvironment: 'enabled'</code> in 3E Config
+- Check that <code>popupTag</code> contains valid pop-up snippet
+- Verify pop-up snippet is correct format
+- Check console for injection messages</p>
+<p><strong>Issue:</strong> Pop-up appearing multiple times<br />
+<strong>Solution:</strong>
+- Verify script version is 2.3.1 or later (has duplicate prevention)
+- Check that <code>window.__3E_POPUP_INJECTED__</code> flag is set
+- Check console for duplicate prevention messages</p>
+<p><strong>Issue:</strong> Pop-up scripts not executing<br />
+<strong>Solution:</strong>
+- Verify pop-up snippet contains valid script tags
+- Check console for script execution errors
+- Verify scripts are being extracted and executed correctly</p>
+<hr />
+<h3 id="3e_pop-up-marketo-form">3E_Pop-up Marketo Form</h3>
+<p><strong>File Location:</strong> <code>tags/pop-up-solutions/3E_Pop-up Marketo Form.html</code><br />
+<strong>Version:</strong> 1.2.3<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config, Marketo Forms2</p>
+<h4 id="what-it-does_14">What It Does</h4>
+<p>Integrates Marketo forms into pop-ups. When a pop-up displays, it can contain a Marketo form for lead capture.</p>
+<h4 id="how-it-works_14">How It Works</h4>
+<p>This script makes Marketo forms work properly inside pop-ups:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Wait for Forms</strong>: It waits for Marketo's form system to load</li>
+<li><strong>Find Pop-up Forms</strong>: It looks for Marketo forms that are inside pop-up containers</li>
+<li><strong>Set Up Handling</strong>: It prepares the forms to work correctly within the pop-up (handles display, validation, etc.)</li>
+<li><strong>Manage Submission</strong>: It ensures form submissions work properly when submitted from within the pop-up</li>
+</ol>
+<p><strong>Why This Matters:</strong> Sometimes Marketo forms don't work correctly when placed inside pop-ups. This script ensures they function properly, so users can successfully submit forms from pop-ups.</p>
+<h4 id="validation-process_14">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with pop-up containing Marketo form</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for script initialization message</li>
+<li>
+<p>Verify Marketo Forms2 detection</p>
+</li>
+<li>
+<p><strong>Test Form in Pop-up:</strong></p>
+</li>
+<li>Trigger pop-up display</li>
+<li>Verify Marketo form appears in pop-up</li>
+<li>Fill out form</li>
+<li>Submit form</li>
+<li>Verify form submission works correctly</li>
+</ol>
+<h4 id="troubleshooting_14">Troubleshooting</h4>
+<p><strong>Issue:</strong> Form not appearing in pop-up<br />
+<strong>Solution:</strong>
+- Verify Marketo Forms2 is loaded
+- Check that form is configured in pop-up
+- Verify pop-up is displaying correctly
+- Check console for form detection messages</p>
+<p><strong>Issue:</strong> Form submission not working<br />
+<strong>Solution:</strong>
+- Verify Marketo Forms2 is loaded
+- Check form configuration
+- Verify form submission handler is set up
+- Check console for submission errors</p>
+<hr />
+<h3 id="3e_pop-up-tracking">3E_Pop-up Tracking</h3>
+<p><strong>File Location:</strong> <code>tags/pop-up-solutions/3E_Pop-up Tracking.html</code><br />
+<strong>Version:</strong> 2.3.2<br />
+<strong>Type:</strong> Custom HTML Tag<br />
+<strong>Dependencies:</strong> 3E Config, Marketo Munchkin</p>
+<h4 id="what-it-does_15">What It Does</h4>
+<p>Tracks pop-up events (display, close, interaction) and sends tracking data to Marketo via Munchkin. This helps measure pop-up effectiveness and user engagement.</p>
+<h4 id="how-it-works_15">How It Works</h4>
+<p>This script tracks what happens with pop-ups and sends that data to Marketo:</p>
+<ol>
+<li><strong>Page Load</strong>: When the page loads, the script starts</li>
+<li><strong>Wait for Marketo</strong>: It waits for Marketo's tracking system (Munchkin) to be ready</li>
+<li><strong>Watch for Events</strong>: It watches for pop-up events:</li>
+<li>When pop-up is displayed (shown to user)</li>
+<li>When pop-up is closed (user dismisses it)</li>
+<li>When form in pop-up is submitted</li>
+<li><strong>When Events Happen</strong>:</li>
+<li>Captures the event information (what happened, when, etc.)</li>
+<li>Sends this data to Marketo using Munchkin</li>
+<li>Records the activity in Marketo (so you can see pop-up interactions in Marketo)</li>
+</ol>
+<p><strong>Why This Matters:</strong> This helps you measure pop-up effectiveness - how many people see it, how many close it, and how many submit forms. This data appears in Marketo so you can track ROI and engagement.</p>
+<h4 id="validation-process_15">Validation Process</h4>
+<ol>
+<li><strong>Enable Debug Mode:</strong></li>
+<li>Set <code>debugMode: 'true'</code> in 3E Config</li>
+<li>
+<p>Reload page with pop-up</p>
+</li>
+<li>
+<p><strong>Check Console Logs:</strong></p>
+</li>
+<li>Open browser console (F12)</li>
+<li>Look for script initialization message</li>
+<li>
+<p>Verify Marketo Munchkin detection</p>
+</li>
+<li>
+<p><strong>Test Pop-up Display Tracking:</strong></p>
+</li>
+<li>Trigger pop-up display</li>
+<li>Check console for tracking messages</li>
+<li>
+<p>Verify Marketo receives tracking data</p>
+</li>
+<li>
+<p><strong>Test Pop-up Close Tracking:</strong></p>
+</li>
+<li>Close pop-up</li>
+<li>Check console for tracking messages</li>
+<li>Verify Marketo receives tracking data</li>
+</ol>
+<h4 id="troubleshooting_15">Troubleshooting</h4>
+<p><strong>Issue:</strong> Tracking not sending to Marketo<br />
+<strong>Solution:</strong>
+- Verify Marketo Munchkin is loaded
+   - Check Munchkin ID in 3E Config
+   - Verify pop-up events are firing
+   - Check console for tracking errors</p>
+<p><strong>Issue:</strong> Events not appearing in Marketo<br />
+<strong>Solution:</strong>
+- Verify Munchkin is initialized correctly
+- Check Marketo activity log for tracking data
+- Verify event data is being sent
+- Check for JavaScript errors</p>
+<hr />
+<h2 id="general-troubleshooting">General Troubleshooting</h2>
+<h3 id="common-issues-across-all-tags">Common Issues Across All Tags</h3>
+<h4 id="issue-script-not-loading">Issue: Script Not Loading</h4>
+<p><strong>Symptoms:</strong>
+- No console logs from script
+- Functionality not working</p>
+<p><strong>Solutions:</strong>
+1. Verify tag is published in GTM container
+2. Check tag trigger conditions (Page View, DOM Ready, etc.)
+3. Verify 3E Config variable is set up
+4. Check browser console for JavaScript errors
+5. Verify tag is not blocked by ad blockers or privacy tools</p>
+<h4 id="issue-3e-config-not-loading">Issue: 3E Config Not Loading</h4>
+<p><strong>Symptoms:</strong>
+- Console shows "Failed to load 3E config" errors
+- Tags not initializing</p>
+<p><strong>Solutions:</strong>
+1. Verify 3E Config variable is created in GTM
+2. Check variable name matches exactly (case-sensitive: "3E config")
+3. Ensure variable is published
+4. Verify variable configuration is valid JSON
+5. Check for typos in variable reference: <code>{{3E config}}</code></p>
+<h4 id="issue-debug-mode-not-working">Issue: Debug Mode Not Working</h4>
+<p><strong>Symptoms:</strong>
+- No console logs appearing
+- Can't see what script is doing</p>
+<p><strong>Solutions:</strong>
+1. Verify <code>debugMode: 'true'</code> in 3E Config (string 'true', not boolean)
+2. Clear browser cache and reload
+3. Check browser console is open (F12)
+4. Verify no console filters are hiding messages
+5. Check that script version supports debug mode</p>
+<h4 id="issue-duplicate-events">Issue: Duplicate Events</h4>
+<p><strong>Symptoms:</strong>
+- Same event firing multiple times
+- DataLayer has duplicate entries</p>
+<p><strong>Solutions:</strong>
+1. Check for duplicate tag deployments in GTM
+2. Verify only one script handles each event type
+3. Check for hardcoded scripts that might conflict
+4. Review tag firing conditions (may be firing multiple times)
+5. Use debug mode to identify which script is firing events</p>
+<h4 id="issue-events-not-appearing-in-datalayer">Issue: Events Not Appearing in dataLayer</h4>
+<p><strong>Symptoms:</strong>
+- Script runs but events don't appear in dataLayer
+- GTM triggers not firing</p>
+<p><strong>Solutions:</strong>
+1. Verify dataLayer exists: <code>window.dataLayer = window.dataLayer || []</code>
+2. Check console for event push confirmations
+3. Verify event format is correct: <code>{event: 'event_name'}</code>
+4. Check GTM Preview mode to see dataLayer events
+5. Verify no JavaScript errors preventing execution</p>
+<h3 id="browser-compatibility-issues">Browser Compatibility Issues</h3>
+<p><strong>Symptoms:</strong>
+- Script works in some browsers but not others
+- Console shows compatibility errors</p>
+<p><strong>Solutions:</strong>
+1. Check browser console for specific error messages
+2. Verify browser supports required features (ES5+)
+3. Test in multiple browsers (Chrome, Firefox, Safari, Edge)
+4. Check for polyfills if using newer JavaScript features
+5. Verify no browser extensions interfering</p>
+<h3 id="performance-issues">Performance Issues</h3>
+<p><strong>Symptoms:</strong>
+- Page loads slowly
+- Scripts taking long to initialize</p>
+<p><strong>Solutions:</strong>
+1. Check Network tab for slow script loading
+2. Verify scripts are not blocking page render
+3. Check for excessive console logging (disable in production)
+4. Verify scripts are optimized and minified
+5. Check for unnecessary script dependencies</p>
+<hr />
+<h2 id="debug-mode-usage">Debug Mode Usage</h2>
+<h3 id="enabling-debug-mode">Enabling Debug Mode</h3>
+<p>Debug mode provides detailed console logging for all tags. To enable:</p>
+<ol>
+<li><strong>In 3E Config Variable:</strong></li>
+<li>Set <code>debugMode: 'true'</code> (string value, not boolean)</li>
+<li>Save and publish variable</li>
+<li>
+<p>Reload page</p>
+</li>
+<li>
+<p><strong>For 3E_RFI Submit (Enhanced Debugging):</strong></p>
+</li>
+<li>Add <code>?3e_rfi_debug=true</code> to URL</li>
+<li>This forces debug mode even if 3E Config has it disabled</li>
+<li>Provides extra logging for form submission detection</li>
+</ol>
+<h3 id="what-debug-mode-shows">What Debug Mode Shows</h3>
+<p>When debug mode is enabled, you'll see:</p>
+<ul>
+<li><strong>Script Initialization:</strong></li>
+<li>Script name and version</li>
+<li>Configuration values</li>
+<li>
+<p>Initialization status</p>
+</li>
+<li>
+<p><strong>Event Tracking:</strong></p>
+</li>
+<li>When events are detected</li>
+<li>Event data being sent</li>
+<li>
+<p>dataLayer push confirmations</p>
+</li>
+<li>
+<p><strong>Error Messages:</strong></p>
+</li>
+<li>Detailed error information</li>
+<li>Stack traces for debugging</li>
+<li>
+<p>Failed operation details</p>
+</li>
+<li>
+<p><strong>State Changes:</strong></p>
+</li>
+<li>When scripts change state</li>
+<li>Configuration updates</li>
+<li>Feature toggles</li>
+</ul>
+<h3 id="console-log-examples">Console Log Examples</h3>
+<p><strong>Successful Initialization:</strong></p>
+<pre class="codehilite"><code>[3E_RFI Submit] v1.4.5
+[3E_RFI Submit] Marketo form detected and ready
+</code></pre>
+
+<p><strong>Event Detection:</strong></p>
+<pre class="codehilite"><code>[3E_RFI Submit] Pushed rfi_submission event to dataLayer
+[3E_3EI Recruiter Activity] bot_initiated event received
+</code></pre>
+
+<p><strong>Error Messages:</strong></p>
+<pre class="codehilite"><code>[3E_RFI Submit] Error checking for hidden conversion form: [error details]
+[3E Favicon Injection] Failed to load 3E config: [error details]
+</code></pre>
+
+<h3 id="using-debug-mode-for-validation">Using Debug Mode for Validation</h3>
+<ol>
+<li><strong>Enable debug mode</strong> in 3E Config</li>
+<li><strong>Open browser console</strong> (F12)</li>
+<li><strong>Reload page</strong> and watch for initialization messages</li>
+<li><strong>Perform actions</strong> (submit form, interact with chatbot, etc.)</li>
+<li><strong>Check console</strong> for expected log messages</li>
+<li><strong>Verify events</strong> in dataLayer</li>
+<li><strong>Disable debug mode</strong> before going to production</li>
+</ol>
+<h3 id="production-best-practices">Production Best Practices</h3>
+<ul>
+<li><strong>Always disable debug mode</strong> in production</li>
+<li>Set <code>debugMode: 'false'</code> in 3E Config for production</li>
+<li>Debug mode adds overhead and exposes internal details</li>
+<li>Use debug mode only for testing and troubleshooting</li>
+</ul>
+<hr />
+<h2 id="additional-resources">Additional Resources</h2>
+<h3 id="related-documentation">Related Documentation</h3>
+<ul>
+<li><strong>tags/README.md</strong> - Quick reference for all tags</li>
+<li><strong>docs/GTM_TAG_UPDATER_SETUP.md</strong> - How to update tags across containers</li>
+<li><strong>docs/GTM_TAG_UPDATER_QUICKSTART.md</strong> - Quick start guide for tag updates</li>
+</ul>
+<h3 id="support-contacts">Support Contacts</h3>
+<p>For issues or questions:
+- Check this guide first
+- Review tag file headers for version and date information
+- Check browser console for error messages
+- Review GTM Preview mode for tag firing information</p>
+<hr />
+<p><strong>Document Version:</strong> 1.0.0<br />
+<strong>Last Updated:</strong> 2025-12-17<br />
+<strong>Maintained By:</strong> 3E Enrollment Development Team</p>
+    </body>
+    </html>
+    
