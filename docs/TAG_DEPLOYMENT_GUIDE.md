@@ -930,6 +930,19 @@ This script handles form submissions that happen inside the chatbot (called "bli
 - Check console for submission errors
 - Verify Marketo API permissions
 
+**Issue:** Conversion script not firing or form not populating  
+**Solution:**
+- **Verify blindFormId is populated in 3E Config**: The `blindFormId` field must be set in the 3E Config variable with the Marketo form ID. If this is missing, the script will log "Missing blindFormId in 3E config" and exit. Check the 3E Config variable in GTM and ensure `blindFormId` is populated with the correct Marketo form ID.
+- **Verify bot_email_captured event**: Check that the chatbot is pushing a `bot_email_captured` event to the dataLayer with the email address (enable debug mode and check console for this event)
+- **Check blind form is populated**: Enable debug mode and look for console messages:
+  - `[3E_ChatBot Conversion] Email set in form: [email]`
+  - `[3E_ChatBot Conversion] Form values after setting:`
+  - If these messages don't appear, the form may not be loading or the email value isn't being set
+- **Verify blind form container exists**: Check that the hidden form container `mkto-hidden-form-conversion` exists in the DOM (inspect page or check console for container creation messages)
+- **Verify form ID matches Marketo form**: The `blindFormId` in 3E Config must match the actual Marketo form ID that exists in your Marketo instance
+- **Check form load timeout**: Look for timeout error messages in console (script waits 10 seconds for form to load - if timeout occurs, form ID may be incorrect or form doesn't exist)
+- **Verify form values**: In debug mode, check console for "Form values after setting" message to confirm the email was successfully populated in the form before submission
+
 ---
 
 ### 3E_3EI Recruiter Tracking
